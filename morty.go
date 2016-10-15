@@ -102,7 +102,7 @@ type RequestConfig struct {
 	baseURL *url.URL
 }
 
-var HTML_FORM_EXTENSION string = `<input type="hidden" name="mortyurl" value="%s" />`
+var HTML_FORM_EXTENSION string = `<input type="hidden" name="mortyurl" value="%s" /><input type="hidden" name="mortyhash" value="%s" />`
 
 var HTML_BODY_EXTENSION string = `
 </div>
@@ -340,7 +340,12 @@ func sanitizeHTML(rc *RequestConfig, ctx *fasthttp.RequestCtx, htmlDoc []byte) {
 					if formURL == nil {
 						formURL = rc.baseURL
 					}
-					fmt.Fprintf(ctx, HTML_FORM_EXTENSION, formURL.String())
+					urlStr := formURL.String()
+					var key string
+					if rc.Key != nil {
+						key = hash(urlStr, rc.Key)
+					}
+					fmt.Fprintf(ctx, HTML_FORM_EXTENSION, urlStr, key)
 
 				}
 
@@ -535,7 +540,7 @@ func (p *Proxy) breakOnError(ctx *fasthttp.RequestCtx, err error) bool {
 
 func main() {
 
-	listen := flag.String("listen", "127.0.0.1:3000", "Proxy listen address")
+	listen := flag.String("listen", "127.0.0.1:3000", "Listen address")
 	key := flag.String("key", "", "HMAC url validation key (hexadecimal encoded) - leave blank to disable")
 	flag.Parse()
 
