@@ -452,7 +452,7 @@ func mergeURIs(u1, u2 *url.URL) {
 	if u2.Scheme == "" || u2.Scheme == "//" {
 		u2.Scheme = u1.Scheme
 	}
-	if u2.Host == "" {
+	if u2.Host == "" && u1.Path != "" {
 		u2.Host = u1.Host
 		if len(u2.Path) == 0 || u2.Path[0] != '/' {
 			u2.Path = path.Join(u1.Path[:strings.LastIndexByte(u1.Path, byte('/'))], u2.Path)
