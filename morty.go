@@ -14,6 +14,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/html"
@@ -94,7 +95,8 @@ var SELF_CLOSING_ELEMENTS [][]byte = [][]byte{
 }
 
 type Proxy struct {
-	Key []byte
+	Key            []byte
+	RequestTimeout time.Duration
 }
 
 type RequestConfig struct {
@@ -111,7 +113,7 @@ var HTML_BODY_EXTENSION string = `
   <div><p>Proxified view,<br />visit <a href="%s">original site</a>.</p><p><label for="mortytoggle">hide</label></p></div>
 </div>
 <style>
-#mortyheader { position: fixed; top: 15%%; left: 0; max-width: 10em; color: #444; overflow: hidden; z-index: 1000; }
+#mortyheader { position: fixed; top: 15%%; left: 0; max-width: 10em; color: #444; overflow: hidden; z-index: 110000; }
 #mortyheader a { color: #3498db; }
 #mortyheader div { padding: 8px; font-size: 0.9em; border-width: 4px 4px 4px 0; border-style: solid; border-color: #3498db; background: #FFF; }
 #mortyheader label { text-align: right; }
@@ -168,7 +170,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		req.SetBody(ctx.PostBody())
 	}
 
-	if p.breakOnError(ctx, CLIENT.Do(req, resp)) {
+	if p.breakOnError(ctx, CLIENT.DoTimeout(req, resp, p.RequestTimeout)) {
 		return
 	}
 
@@ -515,6 +517,7 @@ func (p *Proxy) breakOnError(ctx *fasthttp.RequestCtx, err error) bool {
 	if err == nil {
 		return false
 	}
+	log.Println("error:", err)
 	ctx.SetStatusCode(404)
 	ctx.SetContentType("text/html")
 	ctx.Write([]byte(`<!doctype html>
@@ -542,9 +545,10 @@ func main() {
 
 	listen := flag.String("listen", "127.0.0.1:3000", "Listen address")
 	key := flag.String("key", "", "HMAC url validation key (hexadecimal encoded) - leave blank to disable")
+	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
 	flag.Parse()
 
-	p := &Proxy{}
+	p := &Proxy{RequestTimeout: time.Duration(*requestTimeout) * time.Second}
 
 	if *key != "" {
 		p.Key = []byte(*key)
