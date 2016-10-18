@@ -107,16 +107,16 @@ type RequestConfig struct {
 var HTML_FORM_EXTENSION string = `<input type="hidden" name="mortyurl" value="%s" /><input type="hidden" name="mortyhash" value="%s" />`
 
 var HTML_BODY_EXTENSION string = `
-</div>
 <div id="mortyheader">
   <input type="checkbox" id="mortytoggle" autocomplete="off" />
-  <div><p>Proxified view,<br />visit <a href="%s">original site</a>.</p><p><label for="mortytoggle">hide</label></p></div>
+  <div><p>This is a proxified and sanitized view of the page,<br />visit <a href="%s">original site</a>.</p><div><p><label for="mortytoggle">hide</label></p></div></div>
 </div>
 <style>
-#mortyheader { position: fixed; top: 15%%; left: 0; max-width: 10em; color: #444; overflow: hidden; z-index: 110000; }
+#mortyheader { position: fixed; top: 15%%; left: 0; max-width: 10em; color: #444; overflow: hidden; z-index: 110000; font-size: 0.9em; padding: 1em 1em 1em 0; margin: 0; }
 #mortyheader a { color: #3498db; }
-#mortyheader div { padding: 8px; font-size: 0.9em; border-width: 4px 4px 4px 0; border-style: solid; border-color: #3498db; background: #FFF; }
-#mortyheader label { text-align: right; }
+#mortyheader p { padding: 0; margin: 0; }
+#mortyheader > div { padding: 8px; font-size: 0.9em; border-width: 4px 4px 4px 0; border-style: solid; border-color: #1abc9c; background: #FFF; line-height: 1em; }
+#mortyheader label { text-align: right; cursor: pointer; display: block; color: #444; padding: 0; margin: 0; }
 input[type=checkbox]#mortytoggle { display: none; }
 input[type=checkbox]#mortytoggle:checked ~ div { display: none; }
 </style>
