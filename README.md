@@ -4,10 +4,13 @@ Web content sanitizer proxy as a service
 
 Morty rewrites web pages to exclude malicious HTML tags and CSS/HTML attributes. It also replaces external resource references to prevent third party information leaks.
 
+The main goal of morty is to provide a result proxy for [searx](https://asciimoo.github.com/searx/), but it can be used as a standalone sanitizer service too.
 
-other features:
+Features:
 
- - GET/POST form support
+ - CSS & HTML sanitization
+ - JavaScript blocking
+ - Supports GET/POST forms and IFrames
  - Optional HMAC URL verifier key to prevent service abuse
 
 
