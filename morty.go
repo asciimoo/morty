@@ -176,7 +176,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
 	if resp.StatusCode() != 200 {
 		switch resp.StatusCode() {
-		case 301, 302:
+		case 301, 302, 303, 307, 308:
 			loc := resp.Header.Peek("Location")
 			if loc != nil {
 				url, err := proxifyURI(&RequestConfig{p.Key, parsedURI}, string(loc))
