@@ -31,7 +31,7 @@ var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
 }
 
-var CSS_URL_REGEXP *regexp.Regexp = regexp.MustCompile("url\\((['\"]?)([\u0009\u0021\u0023-\u0026\u0028\u002a-\u007E]+)(['\"]?)\\)")
+var CSS_URL_REGEXP *regexp.Regexp = regexp.MustCompile("(url\\(|@import +)(['\"]?)([\u0009\u0021\u0023-\u0026\u0028\u002a-\u007E]+)(['\"]?)\\)?")
 
 var UNSAFE_ELEMENTS [][]byte = [][]byte{
 	[]byte("applet"),
@@ -223,7 +223,6 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	default:
 		ctx.Write(responseBody)
 	}
-
 }
 
 func popRequestParam(ctx *fasthttp.RequestCtx, paramName []byte) []byte {
@@ -254,8 +253,8 @@ func sanitizeCSS(rc *RequestConfig, ctx *fasthttp.RequestCtx, css []byte) {
 	startIndex := 0
 
 	for _, s := range urlSlices {
-		urlStart := s[4]
-		urlEnd := s[5]
+		urlStart := s[6]
+		urlEnd := s[7]
 
 		if uri, err := proxifyURI(rc, string(css[urlStart:urlEnd])); err == nil {
 			ctx.Write(css[startIndex:urlStart])
