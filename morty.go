@@ -240,13 +240,13 @@ func popRequestParam(ctx *fasthttp.RequestCtx, paramName []byte) []byte {
 	return param
 }
 
-func sanitizeCSS(rc *RequestConfig, ctx *fasthttp.RequestCtx, css []byte) {
+func sanitizeCSS(rc *RequestConfig, out io.Writer, css []byte) {
 	// TODO
 
 	urlSlices := CSS_URL_REGEXP.FindAllSubmatchIndex(css, -1)
 
 	if urlSlices == nil {
-		ctx.Write(css)
+		out.Write(css)
 		return
 	}
 
@@ -257,19 +257,19 @@ func sanitizeCSS(rc *RequestConfig, ctx *fasthttp.RequestCtx, css []byte) {
 		urlEnd := s[7]
 
 		if uri, err := proxifyURI(rc, string(css[urlStart:urlEnd])); err == nil {
-			ctx.Write(css[startIndex:urlStart])
-			ctx.Write([]byte(uri))
+			out.Write(css[startIndex:urlStart])
+			out.Write([]byte(uri))
 			startIndex = urlEnd
 		} else {
 			log.Println("cannot proxify css uri:", css[urlStart:urlEnd])
 		}
 	}
 	if startIndex < len(css) {
-		ctx.Write(css[startIndex:len(css)])
+		out.Write(css[startIndex:len(css)])
 	}
 }
 
-func sanitizeHTML(rc *RequestConfig, ctx *fasthttp.RequestCtx, htmlDoc []byte) {
+func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 	r := bytes.NewReader(htmlDoc)
 	decoder := html.NewTokenizer(r)
 	decoder.AllowCDATA(true)
@@ -306,7 +306,7 @@ func sanitizeHTML(rc *RequestConfig, ctx *fasthttp.RequestCtx, htmlDoc []byte) {
 					break
 				}
 				var attrs [][][]byte
-				fmt.Fprintf(ctx, "<%s", tag)
+				fmt.Fprintf(out, "<%s", tag)
 				if hasAttrs {
 					for {
 						attrName, attrValue, moreAttr := decoder.TagAttr()
@@ -316,15 +316,15 @@ func sanitizeHTML(rc *RequestConfig, ctx *fasthttp.RequestCtx, htmlDoc []byte) {
 						}
 					}
 					if bytes.Equal(tag, []byte("meta")) {
-						sanitizeMetaAttrs(rc, ctx, attrs)
+						sanitizeMetaAttrs(rc, out, attrs)
 					} else {
-						sanitizeAttrs(rc, ctx, attrs)
+						sanitizeAttrs(rc, out, attrs)
 					}
 				}
 				if token == html.SelfClosingTagToken {
-					fmt.Fprintf(ctx, " />")
+					fmt.Fprintf(out, " />")
 				} else {
-					fmt.Fprintf(ctx, ">")
+					fmt.Fprintf(out, ">")
 					if bytes.Equal(tag, []byte("style")) {
 						state = STATE_IN_STYLE
 					}
@@ -346,7 +346,7 @@ func sanitizeHTML(rc *RequestConfig, ctx *fasthttp.RequestCtx, htmlDoc []byte) {
 					if rc.Key != nil {
 						key = hash(urlStr, rc.Key)
 					}
-					fmt.Fprintf(ctx, HTML_FORM_EXTENSION, urlStr, key)
+					fmt.Fprintf(out, HTML_FORM_EXTENSION, urlStr, key)
 
 				}
 
@@ -355,7 +355,7 @@ func sanitizeHTML(rc *RequestConfig, ctx *fasthttp.RequestCtx, htmlDoc []byte) {
 				writeEndTag := true
 				switch string(tag) {
 				case "body":
-					fmt.Fprintf(ctx, HTML_BODY_EXTENSION, rc.baseURL.String())
+					fmt.Fprintf(out, HTML_BODY_EXTENSION, rc.baseURL.String())
 				case "style":
 					state = STATE_DEFAULT
 				case "noscript":
@@ -364,21 +364,21 @@ func sanitizeHTML(rc *RequestConfig, ctx *fasthttp.RequestCtx, htmlDoc []byte) {
 				}
 				// skip noscript tags - only the tag, not the content, because javascript is sanitized
 				if writeEndTag {
-					fmt.Fprintf(ctx, "</%s>", tag)
+					fmt.Fprintf(out, "</%s>", tag)
 				}
 
 			case html.TextToken:
 				switch state {
 				case STATE_DEFAULT:
-					fmt.Fprintf(ctx, "%s", decoder.Raw())
+					fmt.Fprintf(out, "%s", decoder.Raw())
 				case STATE_IN_STYLE:
-					sanitizeCSS(rc, ctx, decoder.Raw())
+					sanitizeCSS(rc, out, decoder.Raw())
 				case STATE_IN_NOSCRIPT:
-					sanitizeHTML(rc, ctx, decoder.Raw())
+					sanitizeHTML(rc, out, decoder.Raw())
 				}
 
 			case html.DoctypeToken, html.CommentToken:
-				ctx.Write(decoder.Raw())
+				out.Write(decoder.Raw())
 			}
 		} else {
 			switch token {
@@ -398,7 +398,7 @@ func sanitizeHTML(rc *RequestConfig, ctx *fasthttp.RequestCtx, htmlDoc []byte) {
 	}
 }
 
-func sanitizeMetaAttrs(rc *RequestConfig, ctx *fasthttp.RequestCtx, attrs [][][]byte) {
+func sanitizeMetaAttrs(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 	var http_equiv []byte
 	var content []byte
 
@@ -416,36 +416,36 @@ func sanitizeMetaAttrs(rc *RequestConfig, ctx *fasthttp.RequestCtx, attrs [][][]
 	if bytes.Equal(http_equiv, []byte("refresh")) && bytes.Index(content, []byte(";url=")) != -1 {
 		parts := bytes.SplitN(content, []byte(";url="), 2)
 		if uri, err := proxifyURI(rc, string(parts[1])); err == nil {
-			fmt.Fprintf(ctx, ` http-equiv="refresh" content="%s;%s"`, parts[0], uri)
+			fmt.Fprintf(out, ` http-equiv="refresh" content="%s;%s"`, parts[0], uri)
 		}
 	} else {
-		sanitizeAttrs(rc, ctx, attrs)
+		sanitizeAttrs(rc, out, attrs)
 	}
 
 }
 
-func sanitizeAttrs(rc *RequestConfig, ctx *fasthttp.RequestCtx, attrs [][][]byte) {
+func sanitizeAttrs(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 	for _, attr := range attrs {
-		sanitizeAttr(rc, ctx, attr[0], attr[1])
+		sanitizeAttr(rc, out, attr[0], attr[1])
 	}
 }
 
-func sanitizeAttr(rc *RequestConfig, ctx *fasthttp.RequestCtx, attrName, attrValue []byte) {
+func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue []byte) {
 	if inArray(attrName, SAFE_ATTRIBUTES) {
-		fmt.Fprintf(ctx, " %s=\"%s\"", attrName, attrValue)
+		fmt.Fprintf(out, " %s=\"%s\"", attrName, attrValue)
 		return
 	}
 	switch string(attrName) {
 	case "src", "href", "action":
 		if uri, err := proxifyURI(rc, string(attrValue)); err == nil {
-			fmt.Fprintf(ctx, " %s=\"%s\"", attrName, uri)
+			fmt.Fprintf(out, " %s=\"%s\"", attrName, uri)
 		} else {
 			log.Println("cannot proxify uri:", attrValue)
 		}
 	case "style":
-		fmt.Fprintf(ctx, " %s=\"", attrName)
-		sanitizeCSS(rc, ctx, attrValue)
-		ctx.Write([]byte("\""))
+		fmt.Fprintf(out, " %s=\"", attrName)
+		sanitizeCSS(rc, out, attrValue)
+		out.Write([]byte("\""))
 	}
 }
 
