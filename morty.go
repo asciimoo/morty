@@ -133,20 +133,21 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	requestURI := popRequestParam(ctx, []byte("mortyurl"))
 
 	if requestURI == nil {
-		p.breakOnError(ctx, errors.New(`missing "mortyurl" URL parameter`))
+		p.serveMainPage(ctx, nil)
 		return
 	}
 
 	if p.Key != nil {
 		if !verifyRequestURI(requestURI, requestHash, p.Key) {
-			p.breakOnError(ctx, errors.New("invalid hash"))
+			p.serveMainPage(ctx, errors.New(`invalid "mortyhash" parameter`))
 			return
 		}
 	}
 
 	parsedURI, err := url.Parse(string(requestURI))
 
-	if p.breakOnError(ctx, err) {
+	if err != nil {
+		p.serveMainPage(ctx, err)
 		return
 	}
 
@@ -175,7 +176,10 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		req.SetBody(ctx.PostBody())
 	}
 
-	if p.breakOnError(ctx, CLIENT.DoTimeout(req, resp, p.RequestTimeout)) {
+	err = CLIENT.DoTimeout(req, resp, p.RequestTimeout)
+
+	if err != nil {
+		p.serveMainPage(ctx, err)
 		return
 	}
 
@@ -200,7 +204,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	contentType := resp.Header.Peek("Content-Type")
 
 	if contentType == nil {
-		p.breakOnError(ctx, errors.New("invalid content type"))
+		p.serveMainPage(ctx, errors.New("invalid content type"))
 		return
 	}
 
@@ -211,7 +215,8 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	if len(contentInfo) == 2 && bytes.Contains(contentInfo[1], []byte("ISO-8859-2")) && bytes.Contains(contentInfo[0], []byte("text")) {
 		var err error
 		responseBody, err = charmap.ISO8859_2.NewDecoder().Bytes(resp.Body())
-		if p.breakOnError(ctx, err) {
+		if err != nil {
+			p.serveMainPage(ctx, err)
 			return
 		}
 	} else {
@@ -231,11 +236,13 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 }
 
 func appRequestHandler(ctx *fasthttp.RequestCtx) bool {
+	// serve robots.txt
 	if bytes.Equal(ctx.Path(), []byte("/robots.txt")) {
 		ctx.SetContentType("text/plain")
 		ctx.Write([]byte("User-Agent: *\nDisallow: /\n"))
 		return true
 	}
+
 	return false
 }
 
@@ -526,32 +533,50 @@ func verifyRequestURI(uri, hashMsg, key []byte) bool {
 	return hmac.Equal(h, mac.Sum(nil))
 }
 
-func (p *Proxy) breakOnError(ctx *fasthttp.RequestCtx, err error) bool {
-	if err == nil {
-		return false
-	}
-	log.Println("error:", err)
-	ctx.SetStatusCode(404)
+func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, err error) {
 	ctx.SetContentType("text/html")
 	ctx.Write([]byte(`<!doctype html>
 <head>
-<title>MortyError</title>
+<title>MortyProxy</title>
+<style>
+body { font-family: 'Garamond', 'Georgia', serif; text-align: center; color: #444; background: #FAFAFA; margin: 0; padding: 0; font-size: 1.1em; }
+input { border: 1px solid #888; padding: 0.3em; color: #444; background: #FFF; font-size: 1.1em; }
+a { text-decoration: none; #2980b9; }
+h1, h2 { font-weight: 200; margin-bottom: 2rem; }
+h1 { font-size: 3em; }
+.footer { position: absolute; bottom: 2em; width: 100%; }
+.footer p { font-size: 0.8em; }
+
+</style>
 </head>
-<body><h2>Error!</h2>`))
-	ctx.Write([]byte("<h3>"))
-	ctx.Write([]byte(html.EscapeString(err.Error())))
-	ctx.Write([]byte("</h3>"))
+<body>
+	<h1>MortyProxy</h1>`))
+	if err != nil {
+		ctx.SetStatusCode(404)
+		log.Println("error:", err)
+		ctx.Write([]byte("<h2>Error: "))
+		ctx.Write([]byte(html.EscapeString(err.Error())))
+		ctx.Write([]byte("</h2>"))
+	} else {
+		ctx.SetStatusCode(200)
+	}
 	if p.Key == nil {
 		ctx.Write([]byte(`
 <form action="post">
 	Visit url: <input placeholder="https://url.." name="mortyurl" />
 	<input type="submit" value="go" />
 </form>`))
+	} else {
+		ctx.Write([]byte(`<h3>Warning! This instance does not support direct URL opening.</h3>`))
 	}
 	ctx.Write([]byte(`
+<div class="footer">
+	<p>Morty rewrites web pages to exclude malicious HTML tags and CSS/HTML attributes. It also replaces external resource references to prevent third-party information leaks.<br />
+	<a href="https://github.com/asciimoo/morty">view on github</a>
+	</p>
+</div>
 </body>
 </html>`))
-	return true
 }
 
 func main() {
