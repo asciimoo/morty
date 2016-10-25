@@ -123,6 +123,11 @@ input[type=checkbox]#mortytoggle:checked ~ div { display: none; }
 `
 
 func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
+
+	if appRequestHandler(ctx) {
+		return
+	}
+
 	requestHash := popRequestParam(ctx, []byte("mortyhash"))
 
 	requestURI := popRequestParam(ctx, []byte("mortyurl"))
@@ -223,6 +228,15 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	default:
 		ctx.Write(responseBody)
 	}
+}
+
+func appRequestHandler(ctx *fasthttp.RequestCtx) bool {
+	if bytes.Equal(ctx.Path(), []byte("/robots.txt")) {
+		ctx.SetContentType("text/plain")
+		ctx.Write([]byte("User-Agent: *\nDisallow: /\n"))
+		return true
+	}
+	return false
 }
 
 func popRequestParam(ctx *fasthttp.RequestCtx, paramName []byte) []byte {
