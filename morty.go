@@ -153,6 +153,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
+	req.SetConnectionClose()
 
 	reqQuery := parsedURI.Query()
 	ctx.QueryArgs().VisitAll(func(key, value []byte) {
