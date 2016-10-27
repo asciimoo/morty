@@ -474,10 +474,11 @@ func sanitizeMetaAttrs(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 		}
 	}
 
-	if bytes.Equal(http_equiv, []byte("refresh")) && bytes.Index(content, []byte(";url=")) != -1 {
-		parts := bytes.SplitN(content, []byte(";url="), 2)
-		if uri, err := proxifyURI(rc, string(parts[1])); err == nil {
-			fmt.Fprintf(out, ` http-equiv="refresh" content="%s;%s"`, parts[0], uri)
+	urlIndex := bytes.Index(bytes.ToLower(content), []byte("url="))
+	if bytes.Equal(http_equiv, []byte("refresh")) && urlIndex != -1 {
+		contentUrl := content[urlIndex+4:]
+		if uri, err := proxifyURI(rc, string(contentUrl)); err == nil {
+			fmt.Fprintf(out, ` http-equiv="refresh" content="%surl=%s"`, content[:urlIndex], uri)
 		}
 	} else {
 		sanitizeAttrs(rc, out, attrs)
