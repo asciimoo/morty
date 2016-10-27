@@ -46,6 +46,7 @@ var SAFE_ATTRIBUTES [][]byte = [][]byte{
 	[]byte("accesskey"),
 	[]byte("align"),
 	[]byte("alt"),
+	[]byte("as"),
 	[]byte("autocomplete"),
 	[]byte("charset"),
 	[]byte("checked"),
@@ -328,7 +329,6 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					break
 				}
 				var attrs [][][]byte
-				fmt.Fprintf(out, "<%s", tag)
 				if hasAttrs {
 					for {
 						attrName, attrValue, moreAttr := decoder.TagAttr()
@@ -337,12 +337,22 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 							break
 						}
 					}
+				}
+				if bytes.Equal(tag, []byte("link")) {
+					sanitizeLinkTag(rc, out, attrs)
+					break
+				}
+
+				fmt.Fprintf(out, "<%s", tag)
+
+				if hasAttrs {
 					if bytes.Equal(tag, []byte("meta")) {
 						sanitizeMetaAttrs(rc, out, attrs)
 					} else {
 						sanitizeAttrs(rc, out, attrs)
 					}
 				}
+
 				if token == html.SelfClosingTagToken {
 					fmt.Fprintf(out, " />")
 				} else {
@@ -351,6 +361,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 						state = STATE_IN_STYLE
 					}
 				}
+
 				if bytes.Equal(tag, []byte("form")) {
 					var formURL *url.URL
 					for _, attr := range attrs {
@@ -417,6 +428,34 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 				}
 			}
 		}
+	}
+}
+
+func sanitizeLinkTag(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
+	exclude := false
+	for _, attr := range attrs {
+		attrName := attr[0]
+		attrValue := attr[1]
+		if bytes.Equal(attrName, []byte("rel")) {
+			if bytes.Equal(attrValue, []byte("dns-prefetch")) {
+				exclude = true
+				break
+			}
+		}
+		if bytes.Equal(attrName, []byte("as")) {
+			if bytes.Equal(attrValue, []byte("script")) {
+				exclude = true
+				break
+			}
+		}
+	}
+
+	if !exclude {
+		out.Write([]byte("<link"))
+		for _, attr := range attrs {
+			sanitizeAttr(rc, out, attr[0], attr[1])
+		}
+		out.Write([]byte(">"))
 	}
 }
 
