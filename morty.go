@@ -210,6 +210,11 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	if bytes.Contains(bytes.ToLower(contentType), []byte("javascript")) {
+		p.serveMainPage(ctx, errors.New("forbidden content type"))
+		return
+	}
+
 	contentInfo := bytes.SplitN(contentType, []byte(";"), 2)
 
 	var responseBody []byte
