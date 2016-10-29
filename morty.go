@@ -147,6 +147,11 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
 	parsedURI, err := url.Parse(string(requestURI))
 
+	if strings.HasSuffix(parsedURI.Host, ".onion") {
+		p.serveMainPage(ctx, errors.New("Tor urls are not supported yet"))
+		return
+	}
+
 	if err != nil {
 		p.serveMainPage(ctx, err)
 		return
