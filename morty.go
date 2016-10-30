@@ -28,7 +28,6 @@ const (
 )
 
 var CLIENT *fasthttp.Client = &fasthttp.Client{
-	Dial:                fasthttp.DialDualStack,
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
 }
 
@@ -640,8 +639,13 @@ func main() {
 
 	listen := flag.String("listen", "127.0.0.1:3000", "Listen address")
 	key := flag.String("key", "", "HMAC url validation key (hexadecimal encoded) - leave blank to disable")
+	ipv6 := flag.Bool("ipv6", false, "Allow IPv6 HTTP requests")
 	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
 	flag.Parse()
+
+	if *ipv6 {
+		CLIENT.Dial = fasthttp.DialDualStack
+	}
 
 	p := &Proxy{RequestTimeout: time.Duration(*requestTimeout) * time.Second}
 
