@@ -28,6 +28,7 @@ const (
 )
 
 var CLIENT *fasthttp.Client = &fasthttp.Client{
+	Dial:                fasthttp.DialDualStack,
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
 }
 
@@ -342,7 +343,11 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 				if hasAttrs {
 					for {
 						attrName, attrValue, moreAttr := decoder.TagAttr()
-						attrs = append(attrs, [][]byte{attrName, attrValue})
+						attrs = append(attrs, [][]byte{
+							attrName,
+							attrValue,
+							[]byte(html.EscapeString(string(attrValue))),
+						})
 						if !moreAttr {
 							break
 						}
@@ -463,7 +468,7 @@ func sanitizeLinkTag(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 	if !exclude {
 		out.Write([]byte("<link"))
 		for _, attr := range attrs {
-			sanitizeAttr(rc, out, attr[0], attr[1])
+			sanitizeAttr(rc, out, attr[0], attr[1], attr[2])
 		}
 		out.Write([]byte(">"))
 	}
@@ -498,13 +503,13 @@ func sanitizeMetaAttrs(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 
 func sanitizeAttrs(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 	for _, attr := range attrs {
-		sanitizeAttr(rc, out, attr[0], attr[1])
+		sanitizeAttr(rc, out, attr[0], attr[1], attr[2])
 	}
 }
 
-func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue []byte) {
+func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue, escapedAttrValue []byte) {
 	if inArray(attrName, SAFE_ATTRIBUTES) {
-		fmt.Fprintf(out, " %s=\"%s\"", attrName, attrValue)
+		fmt.Fprintf(out, " %s=\"%s\"", attrName, escapedAttrValue)
 		return
 	}
 	switch string(attrName) {
@@ -515,9 +520,9 @@ func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue []byte) 
 			log.Println("cannot proxify uri:", attrValue)
 		}
 	case "style":
-		fmt.Fprintf(out, " %s=\"", attrName)
-		sanitizeCSS(rc, out, attrValue)
-		out.Write([]byte("\""))
+		cssAttr := bytes.NewBuffer(nil)
+		sanitizeCSS(rc, cssAttr, attrValue)
+		fmt.Fprintf(out, " %s=\"%s\"", attrName, html.EscapeString(string(cssAttr.Bytes())))
 	}
 }
 
