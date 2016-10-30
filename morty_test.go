@@ -37,10 +37,10 @@ var attrTestData []*AttrTestCase = []*AttrTestCase{
 
 func TestAttrSanitizer(t *testing.T) {
 	u, _ := url.Parse("http://127.0.0.1/")
-	rc := &RequestConfig{nil, u}
+	rc := &RequestConfig{BaseURL: u}
 	for _, testCase := range attrTestData {
 		out := bytes.NewBuffer(nil)
-		sanitizeAttr(rc, out, testCase.AttrName, testCase.AttrValue)
+		sanitizeAttr(rc, out, testCase.AttrName, testCase.AttrValue, testCase.AttrValue)
 		res, _ := out.ReadBytes(byte(0))
 		if !bytes.Equal(res, testCase.ExpectedOutput) {
 			t.Errorf(
@@ -51,5 +51,55 @@ func TestAttrSanitizer(t *testing.T) {
 				res,
 			)
 		}
+	}
+}
+
+var BENCH_SIMPLE_HTML []byte = []byte(`<!doctype html>
+<html>
+ <head>
+  <title>test</title>
+ </head>
+ <body>
+  <h1>Test heading</h1>
+ </body>
+</html>`)
+
+func BenchmarkSanitizeSimpleHTML(b *testing.B) {
+	u, _ := url.Parse("http://127.0.0.1/")
+	rc := &RequestConfig{BaseURL: u}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		out := bytes.NewBuffer(nil)
+		sanitizeHTML(rc, out, BENCH_SIMPLE_HTML)
+	}
+}
+
+var BENCH_COMPLEX_HTML []byte = []byte(`<!doctype html>
+<html>
+ <head>
+  <noscript><meta http-equiv="refresh" content="0; URL=./xy"></noscript>
+  <title>test 2</title>
+  <script> alert('xy'); </script>
+  <link rel="stylesheet" href="./core.bundle.css">
+  <style>
+   html { background: url(./a.jpg); }
+  </style
+ </head>
+ <body>
+  <h1>Test heading</h1>
+  <img src="b.png" alt="imgtitle" />
+  <form action="/z">
+  <input type="submit" style="background: url(http://aa.bb/cc)" >
+  </form>
+ </body>
+</html>`)
+
+func BenchmarkSanitizeComplexHTML(b *testing.B) {
+	u, _ := url.Parse("http://127.0.0.1/")
+	rc := &RequestConfig{BaseURL: u}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		out := bytes.NewBuffer(nil)
+		sanitizeHTML(rc, out, BENCH_COMPLEX_HTML)
 	}
 }
