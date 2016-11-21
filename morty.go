@@ -11,7 +11,6 @@ import (
 	"io"
 	"log"
 	"net/url"
-	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -382,7 +381,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					for _, attr := range attrs {
 						if bytes.Equal(attr[0], []byte("action")) {
 							formURL, _ = url.Parse(string(attr[1]))
-							mergeURIs(rc.BaseURL, formURL)
+							formURL = mergeURIs(rc.BaseURL, formURL)
 							break
 						}
 					}
@@ -526,19 +525,15 @@ func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue, escaped
 	}
 }
 
-func mergeURIs(u1, u2 *url.URL) {
-	if u2.Scheme == "" || u2.Scheme == "//" {
-		u2.Scheme = u1.Scheme
-	}
-	if u2.Host == "" && u1.Path != "" {
-		u2.Host = u1.Host
-		if len(u2.Path) == 0 || u2.Path[0] != '/' {
-			u2.Path = path.Join(u1.Path[:strings.LastIndexByte(u1.Path, byte('/'))], u2.Path)
-		}
-	}
+func mergeURIs(u1, u2 *url.URL) (*url.URL) {
+	return u1.ResolveReference(u2)
 }
 
 func (rc *RequestConfig) ProxifyURI(uri string) (string, error) {
+	// remove javascript protocol
+	if strings.HasPrefix(uri, "javascript:") {
+		return "", nil
+	}
 	// TODO check malicious data: - e.g. data:script
 	if strings.HasPrefix(uri, "data:") {
 		return uri, nil
@@ -552,7 +547,7 @@ func (rc *RequestConfig) ProxifyURI(uri string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	mergeURIs(rc.BaseURL, u)
+	u = mergeURIs(rc.BaseURL, u)
 
 	uri = u.String()
 
