@@ -294,7 +294,7 @@ func sanitizeCSS(rc *RequestConfig, out io.Writer, css []byte) {
 			out.Write([]byte(uri))
 			startIndex = urlEnd
 		} else {
-			log.Println("cannot proxify css uri:", css[urlStart:urlEnd])
+			log.Println("cannot proxify css uri:", string(css[urlStart:urlEnd]))
 		}
 	}
 	if startIndex < len(css) {
@@ -523,7 +523,7 @@ func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue, escaped
 		if uri, err := rc.ProxifyURI(string(attrValue)); err == nil {
 			fmt.Fprintf(out, " %s=\"%s\"", attrName, uri)
 		} else {
-			log.Println("cannot proxify uri:", attrValue)
+			log.Println("cannot proxify uri:", string(attrValue))
 		}
 	case "style":
 		cssAttr := bytes.NewBuffer(nil)
