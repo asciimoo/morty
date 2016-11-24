@@ -133,13 +133,14 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	requestURI := popRequestParam(ctx, []byte("mortyurl"))
 
 	if requestURI == nil {
-		p.serveMainPage(ctx, nil)
+		p.serveMainPage(ctx, 200, nil)
 		return
 	}
 
 	if p.Key != nil {
 		if !verifyRequestURI(requestURI, requestHash, p.Key) {
-			p.serveMainPage(ctx, errors.New(`invalid "mortyhash" parameter`))
+			// HTTP status code 403 : Forbidden
+			p.serveMainPage(ctx, 403, errors.New(`invalid "mortyhash" parameter`))
 			return
 		}
 	}
@@ -147,12 +148,14 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	parsedURI, err := url.Parse(string(requestURI))
 
 	if strings.HasSuffix(parsedURI.Host, ".onion") {
-		p.serveMainPage(ctx, errors.New("Tor urls are not supported yet"))
+		// HTTP status code 501 : Not Implemented
+		p.serveMainPage(ctx, 501, errors.New("Tor urls are not supported yet"))
 		return
 	}
 
 	if err != nil {
-		p.serveMainPage(ctx, err)
+		// HTTP status code 500 : Internal Server Error
+		p.serveMainPage(ctx, 500, err)
 		return
 	}
 
@@ -185,7 +188,13 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	err = CLIENT.DoTimeout(req, resp, p.RequestTimeout)
 
 	if err != nil {
-		p.serveMainPage(ctx, err)
+		if err == fasthttp.ErrTimeout {
+			// HTTP status code 504 : Gateway Time-Out
+			p.serveMainPage(ctx, 504, err)
+		} else {
+			// HTTP status code 500 : Internal Server Error
+			p.serveMainPage(ctx, 500, err)
+		}
 		return
 	}
 
@@ -211,12 +220,14 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	contentType := resp.Header.Peek("Content-Type")
 
 	if contentType == nil {
-		p.serveMainPage(ctx, errors.New("invalid content type"))
+		// HTTP status code 503 : Service Unavailable
+		p.serveMainPage(ctx, 503, errors.New("invalid content type"))
 		return
 	}
 
 	if bytes.Contains(bytes.ToLower(contentType), []byte("javascript")) {
-		p.serveMainPage(ctx, errors.New("forbidden content type"))
+		// HTTP status code 403 : Forbidden
+		p.serveMainPage(ctx, 403, errors.New("forbidden content type"))
 		return
 	}
 
@@ -228,7 +239,8 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		var err error
 		responseBody, err = charmap.ISO8859_2.NewDecoder().Bytes(resp.Body())
 		if err != nil {
-			p.serveMainPage(ctx, err)
+			// HTTP status code 503 : Service Unavailable
+			p.serveMainPage(ctx, 503, err)
 			return
 		}
 	} else {
@@ -591,8 +603,9 @@ func verifyRequestURI(uri, hashMsg, key []byte) bool {
 	return hmac.Equal(h, mac.Sum(nil))
 }
 
-func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, err error) {
+func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err error) {
 	ctx.SetContentType("text/html")
+	ctx.SetStatusCode(statusCode)
 	ctx.Write([]byte(`<!doctype html>
 <head>
 <title>MortyProxy</title>
@@ -615,13 +628,10 @@ h1 { font-size: 3em; }
 		<h1>MortyProxy</h1>
 `))
 	if err != nil {
-		ctx.SetStatusCode(404)
 		log.Println("error:", err)
 		ctx.Write([]byte("<h2>Error: "))
 		ctx.Write([]byte(html.EscapeString(err.Error())))
 		ctx.Write([]byte("</h2>"))
-	} else {
-		ctx.SetStatusCode(200)
 	}
 	if p.Key == nil {
 		ctx.Write([]byte(`
