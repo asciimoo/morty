@@ -109,13 +109,13 @@ var HTML_FORM_EXTENSION string = `<input type="hidden" name="mortyurl" value="%s
 var HTML_BODY_EXTENSION string = `
 <div id="mortyheader">
   <input type="checkbox" id="mortytoggle" autocomplete="off" />
-  <div><p>This is a proxified and sanitized view of the page,<br />visit <a href="%s">original site</a>.</p><div><p><label for="mortytoggle">hide</label></p></div></div>
+  <div><p>This is a proxified and sanitized view of the page,<br />visit <a href="%s" rel="noreferrer">original site</a>.</p><p><label for="mortytoggle">hide</label></p></div>
 </div>
 <style>
-#mortyheader { position: fixed; top: 15%%; left: 0; max-width: 10em; color: #444; overflow: hidden; z-index: 110000; font-size: 0.9em; padding: 1em 1em 1em 0; margin: 0; }
-#mortyheader a { color: #3498db; }
-#mortyheader p { padding: 0; margin: 0; }
-#mortyheader > div { padding: 8px; font-size: 0.9em; border-width: 4px 4px 4px 0; border-style: solid; border-color: #1abc9c; background: #FFF; line-height: 1em; }
+#mortyheader { position: fixed; padding: 12px 12px 12px 0; margin: 0; box-sizing: content-box; top: 15%%; left: 0; max-width: 140px; color: #444; overflow: hidden; z-index: 110000; font-size: 12px; line-height: normal; }
+#mortyheader a { color: #3498db; font-weight: bold; }
+#mortyheader p { padding: 0 0 0.7em 0; margin: 0; }
+#mortyheader > div { padding: 8px; font-size: 12px !important; font-family: sans !important; border-width: 4px 4px 4px 0; border-style: solid; border-color: #1abc9c; background: #FFF; line-height: 1em; }
 #mortyheader label { text-align: right; cursor: pointer; display: block; color: #444; padding: 0; margin: 0; }
 input[type=checkbox]#mortytoggle { display: none; }
 input[type=checkbox]#mortytoggle:checked ~ div { display: none; }
@@ -532,7 +532,7 @@ func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue, escaped
 	}
 }
 
-func mergeURIs(u1, u2 *url.URL) (*url.URL) {
+func mergeURIs(u1, u2 *url.URL) *url.URL {
 	return u1.ResolveReference(u2)
 }
 
@@ -596,19 +596,24 @@ func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, err error) {
 	ctx.Write([]byte(`<!doctype html>
 <head>
 <title>MortyProxy</title>
+<meta name="viewport" content="width=device-width, initial-scale=1 , maximum-scale=1.0, user-scalable=1" />
 <style>
-body { font-family: 'Garamond', 'Georgia', serif; text-align: center; color: #444; background: #FAFAFA; margin: 0; padding: 0; font-size: 1.1em; }
+html { height: 100%; }
+body { min-height : 100%; display: flex; flex-direction:column; font-family: 'Garamond', 'Georgia', serif; text-align: center; color: #444; background: #FAFAFA; margin: 0; padding: 0; font-size: 1.1em; }
 input { border: 1px solid #888; padding: 0.3em; color: #444; background: #FFF; font-size: 1.1em; }
+input[placeholder] { width:80%; }
 a { text-decoration: none; #2980b9; }
 h1, h2 { font-weight: 200; margin-bottom: 2rem; }
 h1 { font-size: 3em; }
-.footer { position: absolute; bottom: 2em; width: 100%; }
+.container { flex:1; min-height: 100%; margin-bottom: 1em; }
+.footer { margin: 1em; }
 .footer p { font-size: 0.8em; }
-
 </style>
 </head>
 <body>
-	<h1>MortyProxy</h1>`))
+	<div class="container">
+		<h1>MortyProxy</h1>
+`))
 	if err != nil {
 		ctx.SetStatusCode(404)
 		log.Println("error:", err)
@@ -620,19 +625,20 @@ h1 { font-size: 3em; }
 	}
 	if p.Key == nil {
 		ctx.Write([]byte(`
-<form action="post">
-	Visit url: <input placeholder="https://url.." name="mortyurl" />
-	<input type="submit" value="go" />
-</form>`))
+		<form action="post">
+		Visit url: <input placeholder="https://url.." name="mortyurl" autofocus />
+		<input type="submit" value="go" />
+		</form>`))
 	} else {
 		ctx.Write([]byte(`<h3>Warning! This instance does not support direct URL opening.</h3>`))
 	}
 	ctx.Write([]byte(`
-<div class="footer">
-	<p>Morty rewrites web pages to exclude malicious HTML tags and CSS/HTML attributes. It also replaces external resource references to prevent third-party information leaks.<br />
-	<a href="https://github.com/asciimoo/morty">view on github</a>
-	</p>
-</div>
+	</div>
+	<div class="footer">
+		<p>Morty rewrites web pages to exclude malicious HTML tags and CSS/HTML attributes. It also replaces external resource references to prevent third-party information leaks.<br />
+		<a href="https://github.com/asciimoo/morty">view on github</a>
+		</p>
+	</div>
 </body>
 </html>`))
 }
