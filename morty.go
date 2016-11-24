@@ -491,6 +491,13 @@ func sanitizeMetaAttrs(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 	urlIndex := bytes.Index(bytes.ToLower(content), []byte("url="))
 	if bytes.Equal(http_equiv, []byte("refresh")) && urlIndex != -1 {
 		contentUrl := content[urlIndex+4:]
+		// special case of <meta http-equiv="refresh" content="0; url='example.com/url.with.quote.outside'">
+		if len(contentUrl)>=2 && (contentUrl[0] == byte('\'') || contentUrl[0] == byte('"')) {
+			if contentUrl[0] == contentUrl[len(contentUrl)-1] {
+				contentUrl=contentUrl[1:len(contentUrl)-1]
+			}
+		}
+		// output proxify result
 		if uri, err := rc.ProxifyURI(string(contentUrl)); err == nil {
 			fmt.Fprintf(out, ` http-equiv="refresh" content="%surl=%s"`, content[:urlIndex], uri)
 		}
