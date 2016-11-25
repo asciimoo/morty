@@ -347,6 +347,22 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					}
 					break
 				}
+				if bytes.Equal(tag, []byte("base")) {
+					for {
+						attrName, attrValue, moreAttr := decoder.TagAttr()
+						if !bytes.Equal(attrName, []byte("href")) {
+							continue
+						}
+						parsedURI, err := url.Parse(string(attrValue))
+						if err == nil {
+							rc.BaseURL = parsedURI
+						}
+						if !moreAttr {
+							break
+						}
+					}
+					break
+				}
 				if bytes.Equal(tag, []byte("noscript")) {
 					state = STATE_IN_NOSCRIPT
 					break
