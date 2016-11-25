@@ -256,6 +256,9 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	case bytes.Contains(contentType, []byte("html")):
 		sanitizeHTML(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
 	default:
+		if ctx.Request.Header.Peek("Content-Disposition") != nil {
+			ctx.Response.Header.AddBytesV("Content-Disposition", ctx.Request.Header.Peek("Content-Disposition"))
+		}
 		ctx.Write(responseBody)
 	}
 }
