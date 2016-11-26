@@ -17,7 +17,8 @@ import (
 
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/html"
-	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/net/html/charset"
+	"golang.org/x/text/encoding"
 )
 
 const (
@@ -121,6 +122,8 @@ input[type=checkbox]#mortytoggle { display: none; }
 input[type=checkbox]#mortytoggle:checked ~ div { display: none; }
 </style>
 `
+
+var HTML_META_CONTENT_TYPE string = "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">"
 
 func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
@@ -236,13 +239,17 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
 	var responseBody []byte
 
-	if len(contentInfo) == 2 && bytes.Contains(contentInfo[1], []byte("ISO-8859-2")) && bytes.Contains(contentInfo[0], []byte("text")) {
-		var err error
-		responseBody, err = charmap.ISO8859_2.NewDecoder().Bytes(resp.Body())
-		if err != nil {
-			// HTTP status code 503 : Service Unavailable
-			p.serveMainPage(ctx, 503, err)
-			return
+	if len(contentInfo) == 2 && bytes.Contains(contentInfo[0], []byte("text")) {
+		e, ename, _ := charset.DetermineEncoding(resp.Body(), string(contentType))
+		if (e != encoding.Nop) && (!strings.EqualFold("utf-8", ename)) {
+			responseBody, err = e.NewDecoder().Bytes(resp.Body())
+			if err != nil {
+				// HTTP status code 503 : Service Unavailable
+				p.serveMainPage(ctx, 503, err)
+				return
+			}
+		} else {
+			responseBody = resp.Body()
 		}
 	} else {
 		responseBody = resp.Body()
@@ -325,7 +332,6 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 
 	unsafeElements := make([][]byte, 0, 8)
 	state := STATE_DEFAULT
-
 	for {
 		token := decoder.Next()
 		if token == html.ErrorToken {
@@ -389,14 +395,15 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					break
 				}
 
+				if bytes.Equal(tag, []byte("meta")) {
+					sanitizeMetaTag(rc, out, attrs)
+					break
+				}
+
 				fmt.Fprintf(out, "<%s", tag)
 
 				if hasAttrs {
-					if bytes.Equal(tag, []byte("meta")) {
-						sanitizeMetaAttrs(rc, out, attrs)
-					} else {
-						sanitizeAttrs(rc, out, attrs)
-					}
+					sanitizeAttrs(rc, out, attrs)
 				}
 
 				if token == html.SelfClosingTagToken {
@@ -406,6 +413,10 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					if bytes.Equal(tag, []byte("style")) {
 						state = STATE_IN_STYLE
 					}
+				}
+
+				if bytes.Equal(tag, []byte("head")) {
+					fmt.Fprintf(out, HTML_META_CONTENT_TYPE)
 				}
 
 				if bytes.Equal(tag, []byte("form")) {
@@ -505,7 +516,7 @@ func sanitizeLinkTag(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 	}
 }
 
-func sanitizeMetaAttrs(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
+func sanitizeMetaTag(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 	var http_equiv []byte
 	var content []byte
 
@@ -518,8 +529,17 @@ func sanitizeMetaAttrs(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 		if bytes.Equal(attrName, []byte("content")) {
 			content = attrValue
 		}
+		if bytes.Equal(attrName, []byte("charset")) {
+			// exclude <meta charset="...">
+			return
+		}
 	}
 
+	if bytes.Equal(http_equiv, []byte("content-type")) {
+		return
+	}
+
+	out.Write([]byte("<meta"))
 	urlIndex := bytes.Index(bytes.ToLower(content), []byte("url="))
 	if bytes.Equal(http_equiv, []byte("refresh")) && urlIndex != -1 {
 		contentUrl := content[urlIndex+4:]
@@ -536,7 +556,7 @@ func sanitizeMetaAttrs(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 	} else {
 		sanitizeAttrs(rc, out, attrs)
 	}
-
+	out.Write([]byte(">"))
 }
 
 func sanitizeAttrs(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
