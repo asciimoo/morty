@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"mime"
 	"net/url"
@@ -212,7 +213,9 @@ var HTML_BODY_EXTENSION string = `
 input[type=checkbox]#mortytoggle { display: none; }
 input[type=checkbox]#mortytoggle:checked ~ div { display: none; }
 </style>
+<script async src="morty.js"></script>
 `
+var MORTY_JS_FILE string
 
 var HTML_HEAD_CONTENT_TYPE string = `<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -222,9 +225,17 @@ var HTML_HEAD_CONTENT_TYPE string = `<meta http-equiv="Content-Type" content="te
 var FAVICON_BYTES []byte
 
 func init() {
+	// load FAVICON_BYTE
 	FaviconBase64 := "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeaR9cIAAAAASUVORK5CYII"
-
 	FAVICON_BYTES, _ = base64.StdEncoding.DecodeString(FaviconBase64)
+
+	// load morty.js
+	b, err := ioutil.ReadFile("morty.js")
+	if err != nil {
+		fmt.Print("Error loading morty.js: ", err)
+	} else {
+		MORTY_JS_FILE = string(b)
+	}
 }
 
 func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
@@ -434,6 +445,13 @@ func appRequestHandler(ctx *fasthttp.RequestCtx) bool {
 	if bytes.Equal(ctx.Path(), []byte("/favicon.ico")) {
 		ctx.SetContentType("image/png")
 		ctx.Write(FAVICON_BYTES)
+		return true		
+	}
+	
+	// serve morty.js
+	if bytes.Equal(ctx.Path(), []byte("/morty.js")) {
+		ctx.SetContentType("application/javascript")
+		ctx.Write([]byte(MORTY_JS_FILE))
 		return true
 	}
 
