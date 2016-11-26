@@ -353,12 +353,11 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 				if bytes.Equal(tag, []byte("base")) {
 					for {
 						attrName, attrValue, moreAttr := decoder.TagAttr()
-						if !bytes.Equal(attrName, []byte("href")) {
-							continue
-						}
-						parsedURI, err := url.Parse(string(attrValue))
-						if err == nil {
-							rc.BaseURL = parsedURI
+						if bytes.Equal(attrName, []byte("href")) {
+							parsedURI, err := url.Parse(string(attrValue))
+							if err == nil {
+								rc.BaseURL = parsedURI
+							}
 						}
 						if !moreAttr {
 							break
