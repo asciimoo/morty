@@ -26,6 +26,25 @@ $ "$GOPATH/bin/morty" --help
 ```
 
 
+### Test
+
+```
+$ cd "$GOPATH/src/github.com/asciimoo/morty"
+$ go test
+```
+
+
+### Benchmark
+
+```
+$ cd "$GOPATH/src/github.com/asciimoo/morty"
+$ go test -benchmem -bench .
+```
+
+
 ## Bugs
 
 Bugs or suggestions? Visit the [issue tracker](https://github.com/asciimoo/morty/issues).
+
+
+## [LICENSE](https://github.com/asciimoo/morty/blob/master/LICENSE)
