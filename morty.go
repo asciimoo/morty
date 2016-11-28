@@ -38,7 +38,9 @@ var UNSAFE_ELEMENTS [][]byte = [][]byte{
 	[]byte("canvas"),
 	[]byte("embed"),
 	//[]byte("iframe"),
+	[]byte("math"),
 	[]byte("script"),
+	[]byte("svg"),
 }
 
 var SAFE_ATTRIBUTES [][]byte = [][]byte{
@@ -58,6 +60,7 @@ var SAFE_ATTRIBUTES [][]byte = [][]byte{
 	[]byte("for"),
 	[]byte("height"),
 	[]byte("hidden"),
+	[]byte("hreflang"),
 	[]byte("id"),
 	[]byte("lang"),
 	[]byte("media"),
@@ -95,6 +98,37 @@ var SELF_CLOSING_ELEMENTS [][]byte = [][]byte{
 	[]byte("wbr"),
 }
 
+var LINK_REL_SAFE_VALUES [][]byte = [][]byte{
+	[]byte("alternate"),
+	[]byte("archives"),
+	[]byte("author"),
+	[]byte("copyright"),
+	[]byte("first"),
+	[]byte("help"),
+	[]byte("icon"),
+	[]byte("index"),
+	[]byte("last"),
+	[]byte("license"),
+	[]byte("manifest"),
+	[]byte("next"),
+	[]byte("pingback"),
+	[]byte("prev"),
+	[]byte("publisher"),
+	[]byte("search"),
+	[]byte("shortcut icon"),
+	[]byte("stylesheet"),
+	[]byte("up"),
+}
+
+var LINK_HTTP_EQUIV_SAFE_VALUES [][]byte = [][]byte{
+	// X-UA-Compatible will be added automaticaly, so it can be skipped
+	[]byte("date"),
+	[]byte("last-modified"),
+	[]byte("refresh"), // URL rewrite 
+	// []byte("location"), TODO URL rewrite
+	[]byte("content-language"),
+}
+
 type Proxy struct {
 	Key            []byte
 	RequestTimeout time.Duration
@@ -123,7 +157,9 @@ input[type=checkbox]#mortytoggle:checked ~ div { display: none; }
 </style>
 `
 
-var HTML_META_CONTENT_TYPE string = "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">"
+var HTML_HEAD_CONTENT_TYPE string = `<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+`
 
 func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
@@ -415,7 +451,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 				}
 
 				if bytes.Equal(tag, []byte("head")) {
-					fmt.Fprintf(out, HTML_META_CONTENT_TYPE)
+					fmt.Fprintf(out, HTML_HEAD_CONTENT_TYPE)
 				}
 
 				if bytes.Equal(tag, []byte("form")) {
@@ -493,7 +529,7 @@ func sanitizeLinkTag(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 		attrName := attr[0]
 		attrValue := attr[1]
 		if bytes.Equal(attrName, []byte("rel")) {
-			if bytes.Equal(attrValue, []byte("dns-prefetch")) {
+			if !inArray(attrValue, LINK_REL_SAFE_VALUES) {
 				exclude = true
 				break
 			}
@@ -524,6 +560,10 @@ func sanitizeMetaTag(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 		attrValue := attr[1]
 		if bytes.Equal(attrName, []byte("http-equiv")) {
 			http_equiv = bytes.ToLower(attrValue)
+			// exclude some <meta http-equiv="..." ..>
+			if !inArray(http_equiv, LINK_HTTP_EQUIV_SAFE_VALUES) {
+				return
+			}
 		}
 		if bytes.Equal(attrName, []byte("content")) {
 			content = attrValue
@@ -532,10 +572,6 @@ func sanitizeMetaTag(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 			// exclude <meta charset="...">
 			return
 		}
-	}
-
-	if bytes.Equal(http_equiv, []byte("content-type")) {
-		return
 	}
 
 	out.Write([]byte("<meta"))
@@ -553,6 +589,9 @@ func sanitizeMetaTag(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 			fmt.Fprintf(out, ` http-equiv="refresh" content="%surl=%s"`, content[:urlIndex], uri)
 		}
 	} else {
+		if len(http_equiv) > 0 {
+			fmt.Fprintf(out, ` http-equiv="%s"`, http_equiv)
+		}
 		sanitizeAttrs(rc, out, attrs)
 	}
 	out.Write([]byte(">"))
