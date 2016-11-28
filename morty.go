@@ -124,7 +124,7 @@ var LINK_HTTP_EQUIV_SAFE_VALUES [][]byte = [][]byte{
 	// X-UA-Compatible will be added automaticaly, so it can be skipped
 	[]byte("date"),
 	[]byte("last-modified"),
-	[]byte("refresh"), // URL rewrite 
+	[]byte("refresh"), // URL rewrite
 	// []byte("location"), TODO URL rewrite
 	[]byte("content-language"),
 }
@@ -624,28 +624,48 @@ func (rc *RequestConfig) ProxifyURI(uri string) (string, error) {
 	if strings.HasPrefix(uri, "javascript:") {
 		return "", nil
 	}
+
 	// TODO check malicious data: - e.g. data:script
 	if strings.HasPrefix(uri, "data:") {
 		return uri, nil
 	}
 
-	if len(uri) > 0 && uri[0] == '#' {
-		return uri, nil
-	}
-
+	// parse the uri
 	u, err := url.Parse(uri)
 	if err != nil {
 		return "", err
 	}
+
+	// get the fragment (with the prefix "#")
+	fragment := ""
+	if len(u.Fragment) > 0 {
+		fragment = "#" + u.Fragment
+	}
+
+	// reset the fragment: it is not included in the mortyurl
+	u.Fragment = ""
+
+	// merge the URI with the document URI
 	u = mergeURIs(rc.BaseURL, u)
 
+	// simple internal link ?
+	// some web pages describe the whole link https://same:auth@same.host/same.path?same.query#new.fragment
+	if u.Scheme == rc.BaseURL.Scheme &&
+		((u.User == nil && rc.BaseURL.User == nil) || (u.User.String() == rc.BaseURL.User.String())) &&
+		u.Host == rc.BaseURL.Host &&
+		u.Path == rc.BaseURL.Path &&
+		u.RawQuery == rc.BaseURL.RawQuery {
+		// the fragment is the only difference between the document URI and the uri parameter
+		return fragment, nil
+	}
+
+	// return full URI and fragment (if not empty)
 	uri = u.String()
 
 	if rc.Key == nil {
-		return fmt.Sprintf("./?mortyurl=%s", url.QueryEscape(uri)), nil
+		return fmt.Sprintf("./?mortyurl=%s%s", url.QueryEscape(uri), fragment), nil
 	}
-
-	return fmt.Sprintf("./?mortyhash=%s&mortyurl=%s", hash(uri, rc.Key), url.QueryEscape(uri)), nil
+	return fmt.Sprintf("./?mortyhash=%s&mortyurl=%s%s", hash(uri, rc.Key), url.QueryEscape(uri), fragment), nil
 }
 
 func inArray(b []byte, a [][]byte) bool {
