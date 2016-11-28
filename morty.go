@@ -166,18 +166,11 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	defer fasthttp.ReleaseRequest(req)
 	req.SetConnectionClose()
 
-	reqQuery := parsedURI.Query()
-	ctx.QueryArgs().VisitAll(func(key, value []byte) {
-		reqQuery.Add(string(key), string(value))
-	})
+	requestURIStr := string(requestURI)
 
-	parsedURI.RawQuery = reqQuery.Encode()
+	log.Println("getting", requestURIStr)
 
-	uriStr := parsedURI.String()
-
-	log.Println("getting", uriStr)
-
-	req.SetRequestURI(uriStr)
+	req.SetRequestURI(requestURIStr)
 	req.Header.SetUserAgentBytes([]byte("Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36"))
 
 	resp := fasthttp.AcquireResponse()
@@ -216,7 +209,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 				}
 			}
 		}
-		error_message := fmt.Sprintf("invalid response: %d", resp.StatusCode())
+		error_message := fmt.Sprintf("invalid response: %d (%s)", resp.StatusCode(), requestURIStr)
 		p.serveMainPage(ctx, resp.StatusCode(), errors.New(error_message))
 		return
 	}
@@ -612,6 +605,7 @@ func (rc *RequestConfig) ProxifyURI(uri string) (string, error) {
 	if rc.Key == nil {
 		return fmt.Sprintf("./?mortyurl=%s", url.QueryEscape(uri)), nil
 	}
+
 	return fmt.Sprintf("./?mortyhash=%s&mortyurl=%s", hash(uri, rc.Key), url.QueryEscape(uri)), nil
 }
 
