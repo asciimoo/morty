@@ -499,7 +499,10 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					sanitizeHTML(rc, out, decoder.Raw())
 				}
 
-			case html.DoctypeToken, html.CommentToken:
+			case html.CommentToken:
+				// ignore comment. TODO : parse IE conditional comment
+
+			case html.DoctypeToken:
 				out.Write(decoder.Raw())
 			}
 		} else {
