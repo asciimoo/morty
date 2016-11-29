@@ -124,7 +124,7 @@ var LINK_HTTP_EQUIV_SAFE_VALUES [][]byte = [][]byte{
 	// X-UA-Compatible will be added automaticaly, so it can be skipped
 	[]byte("date"),
 	[]byte("last-modified"),
-	[]byte("refresh"), // URL rewrite 
+	[]byte("refresh"), // URL rewrite
 	// []byte("location"), TODO URL rewrite
 	[]byte("content-language"),
 }
@@ -284,7 +284,11 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		responseBody = resp.Body()
 	}
 
-	ctx.SetContentType(fmt.Sprintf("%s; charset=UTF-8", contentInfo[0]))
+	if bytes.Contains(contentType, []byte("xhtml")) {
+		ctx.SetContentType("text/html; charset=UTF-8")
+	} else {
+		ctx.SetContentType(fmt.Sprintf("%s; charset=UTF-8", contentInfo[0]))
+	}
 
 	switch {
 	case bytes.Contains(contentType, []byte("css")):
