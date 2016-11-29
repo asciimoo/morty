@@ -12,6 +12,12 @@ type AttrTestCase struct {
 	ExpectedOutput []byte
 }
 
+type SanitizeURITestCase struct {
+	Input          []byte
+	ExpectedOutput []byte
+	ExpectedScheme string
+}
+
 type StringTestCase struct {
 	Input          string
 	ExpectedOutput string
@@ -37,6 +43,64 @@ var attrTestData []*AttrTestCase = []*AttrTestCase{
 		[]byte("onclick"),
 		[]byte("console.log(document.cookies)"),
 		nil,
+	},
+}
+
+var sanitizeUriTestData []*SanitizeURITestCase = []*SanitizeURITestCase{
+	&SanitizeURITestCase{
+		[]byte("http://example.com/"),
+		[]byte("http://example.com/"),
+		"http:",
+	},
+	&SanitizeURITestCase{
+		[]byte("HtTPs://example.com/     \t"),
+		[]byte("https://example.com/"),
+		"https:",
+	},
+	&SanitizeURITestCase{
+		[]byte("      Ht  TPs://example.com/     \t"),
+		[]byte("https://example.com/"),
+		"https:",
+	},
+	&SanitizeURITestCase{
+		[]byte("javascript:void(0)"),
+		[]byte("javascript:void(0)"),
+		"javascript:",
+	},
+	&SanitizeURITestCase{
+		[]byte("      /path/to/a/file/without/protocol     "),
+		[]byte("/path/to/a/file/without/protocol"),
+		"",
+	},
+	&SanitizeURITestCase{
+		[]byte("      #fragment     "),
+		[]byte("#fragment"),
+		"",
+	},
+	&SanitizeURITestCase{
+		[]byte("      qwertyuiop     "),
+		[]byte("qwertyuiop"),
+		"",
+	},
+	&SanitizeURITestCase{
+		[]byte(""),
+		[]byte(""),
+		"",
+	},
+	&SanitizeURITestCase{
+		[]byte(":"),
+		[]byte(":"),
+		":",
+	},
+	&SanitizeURITestCase{
+		[]byte("   :"),
+		[]byte(":"),
+		":",
+	},
+	&SanitizeURITestCase{
+		[]byte("schéma:"),
+		[]byte("schéma:"),
+		"schéma:",
 	},
 }
 
@@ -74,11 +138,31 @@ func TestAttrSanitizer(t *testing.T) {
 	}
 }
 
+func TestSanitizeURI(t *testing.T) {
+	for _, testCase := range sanitizeUriTestData {
+		newUrl, scheme := sanitizeURI(testCase.Input)
+		if !bytes.Equal(newUrl, testCase.ExpectedOutput) {
+			t.Errorf(
+				`URL proxifier error. Expected: "%s", Got: "%s"`,
+				testCase.ExpectedOutput,
+				newUrl,
+			)
+		}
+		if scheme != testCase.ExpectedScheme {
+			t.Errorf(
+				`URL proxifier error. Expected: "%s", Got: "%s"`,
+				testCase.ExpectedScheme,
+				scheme,
+			)
+		}
+	}
+}
+
 func TestURLProxifier(t *testing.T) {
 	u, _ := url.Parse("http://127.0.0.1/")
 	rc := &RequestConfig{BaseURL: u}
 	for _, testCase := range urlTestData {
-		newUrl, err := rc.ProxifyURI(testCase.Input)
+		newUrl, err := rc.ProxifyURI([]byte(testCase.Input))
 		if err != nil {
 			t.Errorf("Failed to parse URL: %s", testCase.Input)
 		}
