@@ -655,7 +655,7 @@ func (rc *RequestConfig) ProxifyURI(uri string) (string, error) {
 	// simple internal link ?
 	// some web pages describe the whole link https://same:auth@same.host/same.path?same.query#new.fragment
 	if u.Scheme == rc.BaseURL.Scheme &&
-		((u.User == nil && rc.BaseURL.User == nil) || (u.User.String() == rc.BaseURL.User.String())) &&
+		(rc.BaseURL.User == nil || (u.User != nil && u.User.String() == rc.BaseURL.User.String())) &&
 		u.Host == rc.BaseURL.Host &&
 		u.Path == rc.BaseURL.Path &&
 		u.RawQuery == rc.BaseURL.RawQuery {

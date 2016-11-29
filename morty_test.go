@@ -12,6 +12,11 @@ type AttrTestCase struct {
 	ExpectedOutput []byte
 }
 
+type StringTestCase struct {
+	Input          string
+	ExpectedOutput string
+}
+
 var attrTestData []*AttrTestCase = []*AttrTestCase{
 	&AttrTestCase{
 		[]byte("href"),
@@ -35,6 +40,17 @@ var attrTestData []*AttrTestCase = []*AttrTestCase{
 	},
 }
 
+var urlTestData []*StringTestCase = []*StringTestCase{
+	&StringTestCase{
+		"http://x.com/",
+		"./?mortyurl=http%3A%2F%2Fx.com%2F",
+	},
+	&StringTestCase{
+		"http://a@x.com/",
+		"./?mortyurl=http%3A%2F%2Fa%40x.com%2F",
+	},
+}
+
 func TestAttrSanitizer(t *testing.T) {
 	u, _ := url.Parse("http://127.0.0.1/")
 	rc := &RequestConfig{BaseURL: u}
@@ -44,11 +60,29 @@ func TestAttrSanitizer(t *testing.T) {
 		res, _ := out.ReadBytes(byte(0))
 		if !bytes.Equal(res, testCase.ExpectedOutput) {
 			t.Errorf(
-				`Attribute parse error. Name: "%s", Value: "%s", Expected: %s, Got: %s`,
+				`Attribute parse error. Name: "%s", Value: "%s", Expected: %s, Got: "%s"`,
 				testCase.AttrName,
 				testCase.AttrValue,
 				testCase.ExpectedOutput,
 				res,
+			)
+		}
+	}
+}
+
+func TestURLProxifier(t *testing.T) {
+	u, _ := url.Parse("http://127.0.0.1/")
+	rc := &RequestConfig{BaseURL: u}
+	for _, testCase := range urlTestData {
+		newUrl, err := rc.ProxifyURI(testCase.Input)
+		if err != nil {
+			t.Errorf("Failed to parse URL: %s", testCase.Input)
+		}
+		if newUrl != testCase.ExpectedOutput {
+			t.Errorf(
+				`URL proxifier error. Expected: "%s", Got: "%s"`,
+				testCase.ExpectedOutput,
+				newUrl,
 			)
 		}
 	}
