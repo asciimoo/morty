@@ -1,0 +1,21 @@
+language: go
+
+go:
+  - 1.6
+  - 1.7
+  - tip
+
+script:
+  # static checks
+  - test -z "$(gofmt -l ./)"
+  - test -z "$(go vet -v ./...)"
+
+  # run tests on a standard platform
+  - go test -v ./...
+
+  # build test for supported platforms
+  - GOOS=linux go build
+  - GOOS=darwin go build
+  - GOOS=freebsd go build
+  - GOOS=windows go build
+  - GOARCH=386 go build
