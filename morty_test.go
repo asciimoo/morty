@@ -49,6 +49,10 @@ var urlTestData []*StringTestCase = []*StringTestCase{
 		"http://a@x.com/",
 		"./?mortyurl=http%3A%2F%2Fa%40x.com%2F",
 	},
+	&StringTestCase{
+		"#a",
+		"#a",
+	},
 }
 
 func TestAttrSanitizer(t *testing.T) {
