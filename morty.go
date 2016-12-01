@@ -687,7 +687,17 @@ func (rc *RequestConfig) ProxifyURI(uri []byte) (string, error) {
 
 	// TODO check malicious data: - e.g. data:script
 	if scheme == "data:" {
-		return string(uri), nil
+		if bytes.HasPrefix(uri, []byte("data:image/png")) ||
+			bytes.HasPrefix(uri, []byte("data:image/jpeg")) ||
+			bytes.HasPrefix(uri, []byte("data:image/pjpeg")) ||
+			bytes.HasPrefix(uri, []byte("data:image/gif")) ||
+			bytes.HasPrefix(uri, []byte("data:image/webp")) {
+			// should be safe
+			return string(uri), nil
+		} else {
+			// unsafe data
+			return "", nil
+		}
 	}
 
 	// parse the uri
