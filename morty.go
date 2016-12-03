@@ -207,7 +207,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	log.Println("getting", requestURIStr)
 
 	req.SetRequestURI(requestURIStr)
-	req.Header.SetUserAgentBytes([]byte("Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36"))
+	req.Header.SetUserAgentBytes([]byte("Mozilla/5.0 (Windows NT 10.0; WOW64; rv:50.0) Gecko/20100101 Firefox/50.0"))
 
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
