@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/html"
@@ -236,7 +237,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 			loc := resp.Header.Peek("Location")
 			if loc != nil {
 				rc := &RequestConfig{Key: p.Key, BaseURL: parsedURI}
-				url, err := rc.ProxifyURI(string(loc))
+				url, err := rc.ProxifyURI(loc)
 				if err == nil {
 					ctx.SetStatusCode(resp.StatusCode())
 					ctx.Response.Header.Add("Location", url)
@@ -345,7 +346,7 @@ func sanitizeCSS(rc *RequestConfig, out io.Writer, css []byte) {
 		urlStart := s[4]
 		urlEnd := s[5]
 
-		if uri, err := rc.ProxifyURI(string(css[urlStart:urlEnd])); err == nil {
+		if uri, err := rc.ProxifyURI(css[urlStart:urlEnd]); err == nil {
 			out.Write(css[startIndex:urlStart])
 			out.Write([]byte(uri))
 			startIndex = urlEnd
@@ -585,7 +586,7 @@ func sanitizeMetaTag(rc *RequestConfig, out io.Writer, attrs [][][]byte) {
 			}
 		}
 		// output proxify result
-		if uri, err := rc.ProxifyURI(string(contentUrl)); err == nil {
+		if uri, err := rc.ProxifyURI(contentUrl); err == nil {
 			fmt.Fprintf(out, ` http-equiv="refresh" content="%surl=%s"`, content[:urlIndex], uri)
 		}
 	} else {
@@ -610,7 +611,7 @@ func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue, escaped
 	}
 	switch string(attrName) {
 	case "src", "href", "action":
-		if uri, err := rc.ProxifyURI(string(attrValue)); err == nil {
+		if uri, err := rc.ProxifyURI(attrValue); err == nil {
 			fmt.Fprintf(out, " %s=\"%s\"", attrName, uri)
 		} else {
 			log.Println("cannot proxify uri:", string(attrValue))
@@ -626,19 +627,84 @@ func mergeURIs(u1, u2 *url.URL) *url.URL {
 	return u1.ResolveReference(u2)
 }
 
-func (rc *RequestConfig) ProxifyURI(uri string) (string, error) {
+// Sanitized URI : removes all runes bellow 32 (included) as the begining and end of URI, and lower case the scheme.
+// avoid memory allocation (except for the scheme)
+func sanitizeURI(uri []byte) ([]byte, string) {
+	first_rune_index := 0
+	first_rune_seen := false
+	scheme_last_index := -1
+	buffer := bytes.NewBuffer(make([]byte, 0, 10))
+
+	// remove trailing space and special characters
+	uri = bytes.TrimRight(uri, "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F\x20")
+
+	// loop over byte by byte
+	for i, c := range uri {
+		// ignore special characters and space (c <= 32)
+		if c > 32 {
+			// append to the lower case of the rune to buffer
+			if c < utf8.RuneSelf && 'A' <= c && c <= 'Z' {
+				c = c + 'a' - 'A'
+			}
+
+			buffer.WriteByte(c)
+
+			// update the first rune index that is not a special rune
+			if !first_rune_seen {
+				first_rune_index = i
+				first_rune_seen = true
+			}
+
+			if c == ':' {
+				// colon rune found, we have found the scheme
+				scheme_last_index = i
+				break
+			} else if c == '/' || c == '?' || c == '\\' || c == '#' {
+				// special case : most probably a relative URI
+				break
+			}
+		}
+	}
+
+	if scheme_last_index != -1 {
+		// scheme found
+		// copy the "lower case without special runes scheme" before the ":" rune
+		scheme_start_index := scheme_last_index - buffer.Len() + 1
+		copy(uri[scheme_start_index:], buffer.Bytes())
+		// and return the result
+		return uri[scheme_start_index:], buffer.String()
+	} else {
+		// scheme NOT found
+		return uri[first_rune_index:], ""
+	}
+}
+
+func (rc *RequestConfig) ProxifyURI(uri []byte) (string, error) {
+	// sanitize URI
+	uri, scheme := sanitizeURI(uri)
+
 	// remove javascript protocol
-	if strings.HasPrefix(uri, "javascript:") {
+	if scheme == "javascript:" {
 		return "", nil
 	}
 
 	// TODO check malicious data: - e.g. data:script
-	if strings.HasPrefix(uri, "data:") {
-		return uri, nil
+	if scheme == "data:" {
+		if bytes.HasPrefix(uri, []byte("data:image/png")) ||
+			bytes.HasPrefix(uri, []byte("data:image/jpeg")) ||
+			bytes.HasPrefix(uri, []byte("data:image/pjpeg")) ||
+			bytes.HasPrefix(uri, []byte("data:image/gif")) ||
+			bytes.HasPrefix(uri, []byte("data:image/webp")) {
+			// should be safe
+			return string(uri), nil
+		} else {
+			// unsafe data
+			return "", nil
+		}
 	}
 
 	// parse the uri
-	u, err := url.Parse(uri)
+	u, err := url.Parse(string(uri))
 	if err != nil {
 		return "", err
 	}
@@ -667,12 +733,12 @@ func (rc *RequestConfig) ProxifyURI(uri string) (string, error) {
 	}
 
 	// return full URI and fragment (if not empty)
-	uri = u.String()
+	morty_uri := u.String()
 
 	if rc.Key == nil {
-		return fmt.Sprintf("./?mortyurl=%s%s", url.QueryEscape(uri), fragment), nil
+		return fmt.Sprintf("./?mortyurl=%s%s", url.QueryEscape(morty_uri), fragment), nil
 	}
-	return fmt.Sprintf("./?mortyhash=%s&mortyurl=%s%s", hash(uri, rc.Key), url.QueryEscape(uri), fragment), nil
+	return fmt.Sprintf("./?mortyhash=%s&mortyurl=%s%s", hash(morty_uri, rc.Key), url.QueryEscape(morty_uri), fragment), nil
 }
 
 func inArray(b []byte, a [][]byte) bool {
