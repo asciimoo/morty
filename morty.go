@@ -20,6 +20,8 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
+
+	"github.com/dalf/morty/contenttype"
 )
 
 const (
@@ -33,6 +35,57 @@ var CLIENT *fasthttp.Client = &fasthttp.Client{
 }
 
 var CSS_URL_REGEXP *regexp.Regexp = regexp.MustCompile("url\\((['\"]?)[ \\t\\f]*([\u0009\u0021\u0023-\u0026\u0028\u002a-\u007E]+)(['\"]?)\\)?")
+
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Complete_list_of_MIME_types
+// https://www.w3.org/TR/2009/WD-MathML3-20090604/mathml.pdf
+// http://planetsvg.com/tools/mime.php
+var FORBIDDEN_CONTENTTYPE_FILTER contenttype.Filter = contenttype.NewFilterOr([]contenttype.Filter{
+	// javascript
+	contenttype.NewFilterContains("javascript"),
+	contenttype.NewFilterContains("ecmascript"),
+	contenttype.NewFilterEquals("application", "js", "*"),
+	// no xml (can contain xhtml or css)
+	contenttype.NewFilterEquals("text", "xml", "*"),
+	contenttype.NewFilterEquals("text", "xml-external-parsed-entity", "*"),
+	contenttype.NewFilterEquals("application", "xml", "*"),
+	contenttype.NewFilterEquals("application", "xml-external-parsed-entity", "*"),
+	contenttype.NewFilterEquals("application", "xslt", "xml"),
+	// no mathml
+	contenttype.NewFilterEquals("application", "mathml", "xml"),
+	contenttype.NewFilterEquals("application", "mathml-presentation", "xml"),
+	contenttype.NewFilterEquals("application", "mathml-content", "xml"),
+	// no svg
+	contenttype.NewFilterEquals("image", "svg", "xml"),
+	contenttype.NewFilterEquals("image", "svg-xml", "*"),
+	// no cache
+	contenttype.NewFilterEquals("text", "cache-manifest", "*"),
+	// no multipart
+	contenttype.NewFilterEquals("multipart", "*", "*"),
+	// no xul
+	contenttype.NewFilterEquals("application", "vnd.mozilla.xul", "xml"),
+	// no htc
+	contenttype.NewFilterEquals("text", "x-component", "*"),
+	// no flash
+	contenttype.NewFilterEquals("application", "x-shockwave-flash", "*"),
+	contenttype.NewFilterEquals("video", "x-flv", ""),
+	contenttype.NewFilterEquals("video", "vnd.sealed-swf", ""),
+	// no know format to have issues
+	contenttype.NewFilterEquals("image", "wmf", "*"),
+	contenttype.NewFilterEquals("image", "emf", "*"),
+	// some of the microsoft and IE mime types
+	contenttype.NewFilterEquals("text", "vbs", "*"),
+	contenttype.NewFilterEquals("text", "vbscript", "*"),
+	contenttype.NewFilterEquals("text", "scriptlet", "*"),
+	contenttype.NewFilterEquals("application", "x-vbs", "*"),
+	contenttype.NewFilterEquals("application", "olescript", "*"),
+	contenttype.NewFilterEquals("application", "x-msmetafile", "*"),
+	// no css (sometime, rendering depend on the browser)
+	contenttype.NewFilterEquals("application", "x-pointplus", "*"),
+})
+
+var ALLOWED_CONTENTTYPE_PARAMETERS map[string]bool = map[string]bool{
+	"charset": true,
+}
 
 var UNSAFE_ELEMENTS [][]byte = [][]byte{
 	[]byte("applet"),
@@ -251,26 +304,43 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	contentType := resp.Header.Peek("Content-Type")
+	contentTypeBytes := resp.Header.Peek("Content-Type")
 
-	if contentType == nil {
+	if contentTypeBytes == nil {
 		// HTTP status code 503 : Service Unavailable
 		p.serveMainPage(ctx, 503, errors.New("invalid content type"))
 		return
 	}
 
-	if bytes.Contains(bytes.ToLower(contentType), []byte("javascript")) {
+	contentTypeString := string(contentTypeBytes)
+
+	// decode Content-Type header
+	contentType, error := contenttype.ParseContentType(contentTypeString)
+	if error != nil {
+		// HTTP status code 503 : Service Unavailable
+		p.serveMainPage(ctx, 503, errors.New("invalid content type"))
+		return
+	}
+
+	// deny access to forbidden content type
+	if FORBIDDEN_CONTENTTYPE_FILTER(contentType) {
 		// HTTP status code 403 : Forbidden
 		p.serveMainPage(ctx, 403, errors.New("forbidden content type"))
 		return
 	}
 
-	contentInfo := bytes.SplitN(contentType, []byte(";"), 2)
+	// HACK : replace */xhtml by text/html
+	if contentType.SubType == "xhtml" {
+		contentType.TopLevelType = "text"
+		contentType.SubType = "html"
+		contentType.Suffix = ""
+	}
 
+	// conversion to UTF-8
 	var responseBody []byte
 
-	if len(contentInfo) == 2 && bytes.Contains(contentInfo[0], []byte("text")) {
-		e, ename, _ := charset.DetermineEncoding(resp.Body(), string(contentType))
+	if contentType.TopLevelType == "text" {
+		e, ename, _ := charset.DetermineEncoding(resp.Body(), contentTypeString)
 		if (e != encoding.Nop) && (!strings.EqualFold("utf-8", ename)) {
 			responseBody, err = e.NewDecoder().Bytes(resp.Body())
 			if err != nil {
@@ -281,20 +351,22 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		} else {
 			responseBody = resp.Body()
 		}
+		// update the charset or specify it
+		contentType.Parameters["charset"] = "UTF-8"
 	} else {
 		responseBody = resp.Body()
 	}
 
-	if bytes.Contains(contentType, []byte("xhtml")) {
-		ctx.SetContentType("text/html; charset=UTF-8")
-	} else {
-		ctx.SetContentType(fmt.Sprintf("%s; charset=UTF-8", contentInfo[0]))
-	}
+	//
+	contentType.FilterParameters(ALLOWED_CONTENTTYPE_PARAMETERS)
+
+	// set the content type
+	ctx.SetContentType(contentType.String())
 
 	switch {
-	case bytes.Contains(contentType, []byte("css")):
+	case contentType.SubType == "css" && contentType.Suffix == "":
 		sanitizeCSS(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
-	case bytes.Contains(contentType, []byte("html")):
+	case contentType.SubType == "html" && contentType.Suffix == "":
 		sanitizeHTML(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
 	default:
 		if ctx.Request.Header.Peek("Content-Disposition") != nil {
