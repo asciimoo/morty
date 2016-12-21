@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -20,6 +22,8 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
+
+	"github.com/dalf/morty/contenttype"
 )
 
 const (
@@ -33,6 +37,57 @@ var CLIENT *fasthttp.Client = &fasthttp.Client{
 }
 
 var CSS_URL_REGEXP *regexp.Regexp = regexp.MustCompile("url\\((['\"]?)[ \\t\\f]*([\u0009\u0021\u0023-\u0026\u0028\u002a-\u007E]+)(['\"]?)\\)?")
+
+var ALLOWED_CONTENTTYPE_FILTER contenttype.Filter = contenttype.NewFilterOr([]contenttype.Filter{
+	// html
+	contenttype.NewFilterEquals("text", "html", ""),
+	contenttype.NewFilterEquals("application", "xhtml", "xml"),
+	// css
+	contenttype.NewFilterEquals("text", "css", ""),
+	// images
+	contenttype.NewFilterEquals("image", "gif", ""),
+	contenttype.NewFilterEquals("image", "png", ""),
+	contenttype.NewFilterEquals("image", "jpeg", ""),
+	contenttype.NewFilterEquals("image", "pjpeg", ""),
+	contenttype.NewFilterEquals("image", "webp", ""),
+	contenttype.NewFilterEquals("image", "tiff", ""),
+	contenttype.NewFilterEquals("image", "vnd.microsoft.icon", ""),
+	contenttype.NewFilterEquals("image", "bmp", ""),
+	contenttype.NewFilterEquals("image", "x-ms-bmp", ""),
+	// fonts
+	contenttype.NewFilterEquals("application", "font-otf", ""),
+	contenttype.NewFilterEquals("application", "font-ttf", ""),
+	contenttype.NewFilterEquals("application", "font-woff", ""),
+	contenttype.NewFilterEquals("application", "vnd.ms-fontobject", ""),
+})
+
+var ALLOWED_CONTENTTYPE_ATTACHMENT_FILTER contenttype.Filter = contenttype.NewFilterOr([]contenttype.Filter{
+	// texts
+	contenttype.NewFilterEquals("text", "csv", ""),
+	contenttype.NewFilterEquals("text", "tab-separated-value", ""),
+	contenttype.NewFilterEquals("text", "plain", ""),
+	// API
+	contenttype.NewFilterEquals("application", "json", ""),
+	// Documents
+	contenttype.NewFilterEquals("application", "x-latex", ""),
+	contenttype.NewFilterEquals("application", "pdf", ""),
+	contenttype.NewFilterEquals("application", "vnd.oasis.opendocument.text", ""),
+	contenttype.NewFilterEquals("application", "vnd.oasis.opendocument.spreadsheet", ""),
+	contenttype.NewFilterEquals("application", "vnd.oasis.opendocument.presentation", ""),
+	contenttype.NewFilterEquals("application", "vnd.oasis.opendocument.graphics", ""),
+	// Compressed archives
+	contenttype.NewFilterEquals("application", "zip", ""),
+	contenttype.NewFilterEquals("application", "gzip", ""),
+	contenttype.NewFilterEquals("application", "x-compressed", ""),
+	contenttype.NewFilterEquals("application", "x-gtar", ""),
+	contenttype.NewFilterEquals("application", "x-compress", ""),
+	// Generic binary
+	contenttype.NewFilterEquals("application", "octet-stream", ""),
+})
+
+var ALLOWED_CONTENTTYPE_PARAMETERS map[string]bool = map[string]bool{
+	"charset": true,
+}
 
 var UNSAFE_ELEMENTS [][]byte = [][]byte{
 	[]byte("applet"),
@@ -251,26 +306,53 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	contentType := resp.Header.Peek("Content-Type")
+	contentTypeBytes := resp.Header.Peek("Content-Type")
 
-	if contentType == nil {
+	if contentTypeBytes == nil {
 		// HTTP status code 503 : Service Unavailable
 		p.serveMainPage(ctx, 503, errors.New("invalid content type"))
 		return
 	}
 
-	if bytes.Contains(bytes.ToLower(contentType), []byte("javascript")) {
-		// HTTP status code 403 : Forbidden
-		p.serveMainPage(ctx, 403, errors.New("forbidden content type"))
+	contentTypeString := string(contentTypeBytes)
+
+	// decode Content-Type header
+	contentType, error := contenttype.ParseContentType(contentTypeString)
+	if error != nil {
+		// HTTP status code 503 : Service Unavailable
+		p.serveMainPage(ctx, 503, errors.New("invalid content type"))
 		return
 	}
 
-	contentInfo := bytes.SplitN(contentType, []byte(";"), 2)
+	// content-disposition
+	contentDispositionBytes := ctx.Request.Header.Peek("Content-Disposition")
 
+	// check content type
+	if !ALLOWED_CONTENTTYPE_FILTER(contentType) {
+		// it is not a usual content type
+		if ALLOWED_CONTENTTYPE_ATTACHMENT_FILTER(contentType) {
+			// force attachment for allowed content type
+			contentDispositionBytes = contentDispositionForceAttachment(contentDispositionBytes, parsedURI)
+		} else {
+			// deny access to forbidden content type
+			// HTTP status code 403 : Forbidden
+			p.serveMainPage(ctx, 403, errors.New("forbidden content type"))
+			return
+		}
+	}
+
+	// HACK : replace */xhtml by text/html
+	if contentType.SubType == "xhtml" {
+		contentType.TopLevelType = "text"
+		contentType.SubType = "html"
+		contentType.Suffix = ""
+	}
+
+	// conversion to UTF-8
 	var responseBody []byte
 
-	if len(contentInfo) == 2 && bytes.Contains(contentInfo[0], []byte("text")) {
-		e, ename, _ := charset.DetermineEncoding(resp.Body(), string(contentType))
+	if contentType.TopLevelType == "text" {
+		e, ename, _ := charset.DetermineEncoding(resp.Body(), contentTypeString)
 		if (e != encoding.Nop) && (!strings.EqualFold("utf-8", ename)) {
 			responseBody, err = e.NewDecoder().Bytes(resp.Body())
 			if err != nil {
@@ -281,27 +363,53 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		} else {
 			responseBody = resp.Body()
 		}
+		// update the charset or specify it
+		contentType.Parameters["charset"] = "UTF-8"
 	} else {
 		responseBody = resp.Body()
 	}
 
-	if bytes.Contains(contentType, []byte("xhtml")) {
-		ctx.SetContentType("text/html; charset=UTF-8")
-	} else {
-		ctx.SetContentType(fmt.Sprintf("%s; charset=UTF-8", contentInfo[0]))
-	}
+	//
+	contentType.FilterParameters(ALLOWED_CONTENTTYPE_PARAMETERS)
 
+	// set the content type
+	ctx.SetContentType(contentType.String())
+
+	// output according to MIME type
 	switch {
-	case bytes.Contains(contentType, []byte("css")):
+	case contentType.SubType == "css" && contentType.Suffix == "":
 		sanitizeCSS(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
-	case bytes.Contains(contentType, []byte("html")):
+	case contentType.SubType == "html" && contentType.Suffix == "":
 		sanitizeHTML(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
 	default:
-		if ctx.Request.Header.Peek("Content-Disposition") != nil {
-			ctx.Response.Header.AddBytesV("Content-Disposition", ctx.Request.Header.Peek("Content-Disposition"))
+		if contentDispositionBytes != nil {
+			ctx.Response.Header.AddBytesV("Content-Disposition", contentDispositionBytes)
 		}
 		ctx.Write(responseBody)
 	}
+}
+
+// force content-disposition to attachment
+func contentDispositionForceAttachment(contentDispositionBytes []byte, url *url.URL) []byte {
+	var contentDispositionParams map[string]string
+
+	if contentDispositionBytes != nil {
+		var err error
+		_, contentDispositionParams, err = mime.ParseMediaType(string(contentDispositionBytes))
+		if err != nil {
+			contentDispositionParams = make(map[string]string)
+		}
+	} else {
+		contentDispositionParams = make(map[string]string)
+	}
+
+	_, fileNameDefined := contentDispositionParams["filename"]
+	if !fileNameDefined {
+		// TODO : sanitize filename
+		contentDispositionParams["fileName"] = filepath.Base(url.Path)
+	}
+
+	return []byte(mime.FormatMediaType("attachment", contentDispositionParams))
 }
 
 func appRequestHandler(ctx *fasthttp.RequestCtx) bool {
