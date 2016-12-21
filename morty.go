@@ -23,7 +23,7 @@ import (
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
 
-	"github.com/dalf/morty/contenttype"
+	"github.com/asciimoo/morty/contenttype"
 )
 
 const (
