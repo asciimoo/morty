@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -36,51 +38,51 @@ var CLIENT *fasthttp.Client = &fasthttp.Client{
 
 var CSS_URL_REGEXP *regexp.Regexp = regexp.MustCompile("url\\((['\"]?)[ \\t\\f]*([\u0009\u0021\u0023-\u0026\u0028\u002a-\u007E]+)(['\"]?)\\)?")
 
-// https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Complete_list_of_MIME_types
-// https://www.w3.org/TR/2009/WD-MathML3-20090604/mathml.pdf
-// http://planetsvg.com/tools/mime.php
-var FORBIDDEN_CONTENTTYPE_FILTER contenttype.Filter = contenttype.NewFilterOr([]contenttype.Filter{
-	// javascript
-	contenttype.NewFilterContains("javascript"),
-	contenttype.NewFilterContains("ecmascript"),
-	contenttype.NewFilterEquals("application", "js", "*"),
-	// no xml (can contain xhtml or css)
-	contenttype.NewFilterEquals("text", "xml", "*"),
-	contenttype.NewFilterEquals("text", "xml-external-parsed-entity", "*"),
-	contenttype.NewFilterEquals("application", "xml", "*"),
-	contenttype.NewFilterEquals("application", "xml-external-parsed-entity", "*"),
-	contenttype.NewFilterEquals("application", "xslt", "xml"),
-	// no mathml
-	contenttype.NewFilterEquals("application", "mathml", "xml"),
-	contenttype.NewFilterEquals("application", "mathml-presentation", "xml"),
-	contenttype.NewFilterEquals("application", "mathml-content", "xml"),
-	// no svg
-	contenttype.NewFilterEquals("image", "svg", "xml"),
-	contenttype.NewFilterEquals("image", "svg-xml", "*"),
-	// no cache
-	contenttype.NewFilterEquals("text", "cache-manifest", "*"),
-	// no multipart
-	contenttype.NewFilterEquals("multipart", "*", "*"),
-	// no xul
-	contenttype.NewFilterEquals("application", "vnd.mozilla.xul", "xml"),
-	// no htc
-	contenttype.NewFilterEquals("text", "x-component", "*"),
-	// no flash
-	contenttype.NewFilterEquals("application", "x-shockwave-flash", "*"),
-	contenttype.NewFilterEquals("video", "x-flv", ""),
-	contenttype.NewFilterEquals("video", "vnd.sealed-swf", ""),
-	// no know format to have issues
-	contenttype.NewFilterEquals("image", "wmf", "*"),
-	contenttype.NewFilterEquals("image", "emf", "*"),
-	// some of the microsoft and IE mime types
-	contenttype.NewFilterEquals("text", "vbs", "*"),
-	contenttype.NewFilterEquals("text", "vbscript", "*"),
-	contenttype.NewFilterEquals("text", "scriptlet", "*"),
-	contenttype.NewFilterEquals("application", "x-vbs", "*"),
-	contenttype.NewFilterEquals("application", "olescript", "*"),
-	contenttype.NewFilterEquals("application", "x-msmetafile", "*"),
-	// no css (sometime, rendering depend on the browser)
-	contenttype.NewFilterEquals("application", "x-pointplus", "*"),
+var ALLOWED_CONTENTTYPE_FILTER contenttype.Filter = contenttype.NewFilterOr([]contenttype.Filter{
+	// html
+	contenttype.NewFilterEquals("text", "html", ""),
+	contenttype.NewFilterEquals("application", "xhtml", "xml"),
+	// css
+	contenttype.NewFilterEquals("text", "css", ""),
+	// images
+	contenttype.NewFilterEquals("image", "gif", ""),
+	contenttype.NewFilterEquals("image", "png", ""),
+	contenttype.NewFilterEquals("image", "jpeg", ""),
+	contenttype.NewFilterEquals("image", "pjpeg", ""),
+	contenttype.NewFilterEquals("image", "webp", ""),
+	contenttype.NewFilterEquals("image", "tiff", ""),
+	contenttype.NewFilterEquals("image", "vnd.microsoft.icon", ""),
+	contenttype.NewFilterEquals("image", "bmp", ""),
+	contenttype.NewFilterEquals("image", "x-ms-bmp", ""),
+	// fonts
+	contenttype.NewFilterEquals("application", "font-otf", ""),
+	contenttype.NewFilterEquals("application", "font-ttf", ""),
+	contenttype.NewFilterEquals("application", "font-woff", ""),
+	contenttype.NewFilterEquals("application", "vnd.ms-fontobject", ""),
+})
+
+var ALLOWED_CONTENTTYPE_ATTACHMENT_FILTER contenttype.Filter = contenttype.NewFilterOr([]contenttype.Filter{
+	// texts
+	contenttype.NewFilterEquals("text", "csv", ""),
+	contenttype.NewFilterEquals("text", "tab-separated-value", ""),
+	contenttype.NewFilterEquals("text", "plain", ""),
+	// API
+	contenttype.NewFilterEquals("application", "json", ""),
+	// Documents
+	contenttype.NewFilterEquals("application", "x-latex", ""),
+	contenttype.NewFilterEquals("application", "pdf", ""),
+	contenttype.NewFilterEquals("application", "vnd.oasis.opendocument.text", ""),
+	contenttype.NewFilterEquals("application", "vnd.oasis.opendocument.spreadsheet", ""),
+	contenttype.NewFilterEquals("application", "vnd.oasis.opendocument.presentation", ""),
+	contenttype.NewFilterEquals("application", "vnd.oasis.opendocument.graphics", ""),
+	// Compressed archives
+	contenttype.NewFilterEquals("application", "zip", ""),
+	contenttype.NewFilterEquals("application", "gzip", ""),
+	contenttype.NewFilterEquals("application", "x-compressed", ""),
+	contenttype.NewFilterEquals("application", "x-gtar", ""),
+	contenttype.NewFilterEquals("application", "x-compress", ""),
+	// Generic binary
+	contenttype.NewFilterEquals("application", "octet-stream", ""),
 })
 
 var ALLOWED_CONTENTTYPE_PARAMETERS map[string]bool = map[string]bool{
@@ -322,11 +324,21 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// deny access to forbidden content type
-	if FORBIDDEN_CONTENTTYPE_FILTER(contentType) {
-		// HTTP status code 403 : Forbidden
-		p.serveMainPage(ctx, 403, errors.New("forbidden content type"))
-		return
+	// content-disposition
+	contentDispositionBytes := ctx.Request.Header.Peek("Content-Disposition")
+
+	// check content type
+	if !ALLOWED_CONTENTTYPE_FILTER(contentType) {
+		// it is not a usual content type
+		if ALLOWED_CONTENTTYPE_ATTACHMENT_FILTER(contentType) {
+			// force attachment for allowed content type
+			contentDispositionBytes = contentDispositionForceAttachment(contentDispositionBytes, parsedURI)
+		} else {
+			// deny access to forbidden content type
+			// HTTP status code 403 : Forbidden
+			p.serveMainPage(ctx, 403, errors.New("forbidden content type"))
+			return
+		}
 	}
 
 	// HACK : replace */xhtml by text/html
@@ -363,17 +375,41 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	// set the content type
 	ctx.SetContentType(contentType.String())
 
+	// output according to MIME type
 	switch {
 	case contentType.SubType == "css" && contentType.Suffix == "":
 		sanitizeCSS(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
 	case contentType.SubType == "html" && contentType.Suffix == "":
 		sanitizeHTML(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
 	default:
-		if ctx.Request.Header.Peek("Content-Disposition") != nil {
-			ctx.Response.Header.AddBytesV("Content-Disposition", ctx.Request.Header.Peek("Content-Disposition"))
+		if contentDispositionBytes != nil {
+			ctx.Response.Header.AddBytesV("Content-Disposition", contentDispositionBytes)
 		}
 		ctx.Write(responseBody)
 	}
+}
+
+// force content-disposition to attachment
+func contentDispositionForceAttachment(contentDispositionBytes []byte, url *url.URL) []byte {
+	var contentDispositionParams map[string]string
+
+	if contentDispositionBytes != nil {
+		var err error
+		_, contentDispositionParams, err = mime.ParseMediaType(string(contentDispositionBytes))
+		if err != nil {
+			contentDispositionParams = make(map[string]string)
+		}
+	} else {
+		contentDispositionParams = make(map[string]string)
+	}
+
+	_, fileNameDefined := contentDispositionParams["filename"]
+	if !fileNameDefined {
+		// TODO : sanitize filename
+		contentDispositionParams["fileName"] = filepath.Base(url.Path)
+	}
+
+	return []byte(mime.FormatMediaType("attachment", contentDispositionParams))
 }
 
 func appRequestHandler(ctx *fasthttp.RequestCtx) bool {
