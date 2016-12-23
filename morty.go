@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -145,14 +146,14 @@ var HTML_FORM_EXTENSION string = `<input type="hidden" name="mortyurl" value="%s
 var HTML_BODY_EXTENSION string = `
 <div id="mortyheader">
   <input type="checkbox" id="mortytoggle" autocomplete="off" />
-  <div><p>This is a proxified and sanitized view of the page,<br />visit <a href="%s" rel="noreferrer">original site</a>.</p><p><label for="mortytoggle">hide</label></p></div>
+  <p>This is a proxified and sanitized view of the page,<br />visit <a href="%s" rel="noreferrer">original site</a>.</p><p><label for="mortytoggle">hide</label></p>
 </div>
 <style>
-#mortyheader { position: fixed; padding: 12px 12px 12px 0; margin: 0; box-sizing: content-box; top: 15%%; left: 0; max-width: 140px; color: #444; overflow: hidden; z-index: 110000; font-size: 12px; line-height: normal; }
-#mortyheader a { color: #3498db; font-weight: bold; }
-#mortyheader p { padding: 0 0 0.7em 0; margin: 0; }
-#mortyheader > div { padding: 8px; font-size: 12px !important; font-family: sans !important; border-width: 4px 4px 4px 0; border-style: solid; border-color: #1abc9c; background: #FFF; line-height: 1em; }
-#mortyheader label { text-align: right; cursor: pointer; display: block; color: #444; padding: 0; margin: 0; }
+#mortyheader { position: fixed; margin: 0; box-sizing: border-box; -webkit-box-sizing: border-box; top: 15%%; left: 0; max-width: 140px; overflow: hidden; z-index: 2147483647 !important; font-size: 12px; line-height: normal; border-width: 4px 4px 4px 0; border-style: solid; border-color: #1abc9c; background: #FFF; padding: 12px 12px 8px 8px; color: #444; }
+#mortyheader * { box-sizing: content-box; margin: 0; border: none; padding: 0; overflow: hidden; z-index: 2147483647 !important; line-height: 1em; font-size: 12px !important; font-family: sans !important; font-weight: normal; text-align: left; text-decoration: none; }
+#mortyheader p { padding: 0 0 0.7em 0; display: block; }
+#mortyheader a { color: #3498db; font-weight: bold; display: inline; }
+#mortyheader label { text-align: right; cursor: pointer; display: block; color: #444; }
 input[type=checkbox]#mortytoggle { display: none; }
 input[type=checkbox]#mortytoggle:checked ~ div { display: none; }
 </style>
@@ -160,7 +161,16 @@ input[type=checkbox]#mortytoggle:checked ~ div { display: none; }
 
 var HTML_HEAD_CONTENT_TYPE string = `<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="referrer" content="no-referrer">
 `
+
+var FAVICON_BYTES []byte
+
+func init() {
+	FaviconBase64 := "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeaR9cIAAAAASUVORK5CYII"
+
+	FAVICON_BYTES, _ = base64.StdEncoding.DecodeString(FaviconBase64)
+}
 
 func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
@@ -309,6 +319,13 @@ func appRequestHandler(ctx *fasthttp.RequestCtx) bool {
 	if bytes.Equal(ctx.Path(), []byte("/robots.txt")) {
 		ctx.SetContentType("text/plain")
 		ctx.Write([]byte("User-Agent: *\nDisallow: /\n"))
+		return true
+	}
+
+	// server favicon.ico
+	if bytes.Equal(ctx.Path(), []byte("/favicon.ico")) {
+		ctx.SetContentType("image/png")
+		ctx.Write(FAVICON_BYTES)
 		return true
 	}
 
@@ -769,9 +786,10 @@ func verifyRequestURI(uri, hashMsg, key []byte) bool {
 }
 
 func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err error) {
-	ctx.SetContentType("text/html")
+	ctx.SetContentType("text/html; charset=UTF-8")
 	ctx.SetStatusCode(statusCode)
 	ctx.Write([]byte(`<!doctype html>
+<html>
 <head>
 <title>MortyProxy</title>
 <meta name="viewport" content="width=device-width, initial-scale=1 , maximum-scale=1.0, user-scalable=1" />
