@@ -219,6 +219,39 @@ var HTML_HEAD_CONTENT_TYPE string = `<meta http-equiv="Content-Type" content="te
 <meta name="referrer" content="no-referrer">
 `
 
+var MORTY_HTML_PAGE_START string = `<!doctype html>
+<html>
+<head>
+<title>MortyProxy</title>
+<meta name="viewport" content="width=device-width, initial-scale=1 , maximum-scale=1.0, user-scalable=1" />
+<style>
+html { height: 100%; }
+body { min-height : 100%; display: flex; flex-direction:column; font-family: 'Garamond', 'Georgia', serif; text-align: center; color: #444; background: #FAFAFA; margin: 0; padding: 0; font-size: 1.1em; }
+input { border: 1px solid #888; padding: 0.3em; color: #444; background: #FFF; font-size: 1.1em; }
+input[placeholder] { width:80%; }
+a { text-decoration: none; #2980b9; }
+h1, h2 { font-weight: 200; margin-bottom: 2rem; }
+h1 { font-size: 3em; }
+.container { flex:1; min-height: 100%; margin-bottom: 1em; }
+.footer { margin: 1em; }
+.footer p { font-size: 0.8em; }
+</style>
+</head>
+<body>
+	<div class="container">
+		<h1>MortyProxy</h1>
+`
+
+var MORTY_HTML_PAGE_END string = `
+	</div>
+	<div class="footer">
+		<p>Morty rewrites web pages to exclude malicious HTML tags and CSS/HTML attributes. It also replaces external resource references to prevent third-party information leaks.<br />
+		<a href="https://github.com/asciimoo/morty">view on github</a>
+		</p>
+	</div>
+</body>
+</html>`
+
 var FAVICON_BYTES []byte
 
 func init() {
@@ -252,15 +285,15 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
 	parsedURI, err := url.Parse(string(requestURI))
 
-	if strings.HasSuffix(parsedURI.Host, ".onion") {
-		// HTTP status code 501 : Not Implemented
-		p.serveMainPage(ctx, 501, errors.New("Tor urls are not supported yet"))
-		return
-	}
-
 	if err != nil {
 		// HTTP status code 500 : Internal Server Error
 		p.serveMainPage(ctx, 500, err)
+		return
+	}
+
+	// Serve an intermediate page for protocols other than HTTP(S)
+	if (parsedURI.Scheme != "http" && parsedURI.Scheme != "https") || strings.HasSuffix(parsedURI.Host, ".onion") {
+		p.serveExitMortyPage(ctx, parsedURI)
 		return
 	}
 
@@ -893,31 +926,23 @@ func verifyRequestURI(uri, hashMsg, key []byte) bool {
 	return hmac.Equal(h, mac.Sum(nil))
 }
 
+func (p *Proxy) serveExitMortyPage(ctx *fasthttp.RequestCtx, uri *url.URL) {
+	ctx.SetContentType("text/html")
+	ctx.SetStatusCode(403)
+	ctx.Write([]byte(MORTY_HTML_PAGE_START))
+	ctx.Write([]byte("<h2>You are about to exit MortyProxy</h2>"))
+	ctx.Write([]byte("<p>Following</p><p><a href=\""))
+	ctx.Write([]byte(html.EscapeString(uri.String())))
+	ctx.Write([]byte("\" rel=\"noreferrer\">"))
+	ctx.Write([]byte(html.EscapeString(uri.String())))
+	ctx.Write([]byte("</a></p><p>the content of this URL will be <b>NOT</b> sanitized.</p>"))
+	ctx.Write([]byte(MORTY_HTML_PAGE_END))
+}
+
 func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err error) {
 	ctx.SetContentType("text/html; charset=UTF-8")
 	ctx.SetStatusCode(statusCode)
-	ctx.Write([]byte(`<!doctype html>
-<html>
-<head>
-<title>MortyProxy</title>
-<meta name="viewport" content="width=device-width, initial-scale=1 , maximum-scale=1.0, user-scalable=1" />
-<style>
-html { height: 100%; }
-body { min-height : 100%; display: flex; flex-direction:column; font-family: 'Garamond', 'Georgia', serif; text-align: center; color: #444; background: #FAFAFA; margin: 0; padding: 0; font-size: 1.1em; }
-input { border: 1px solid #888; padding: 0.3em; color: #444; background: #FFF; font-size: 1.1em; }
-input[placeholder] { width:80%; }
-a { text-decoration: none; #2980b9; }
-h1, h2 { font-weight: 200; margin-bottom: 2rem; }
-h1 { font-size: 3em; }
-.container { flex:1; min-height: 100%; margin-bottom: 1em; }
-.footer { margin: 1em; }
-.footer p { font-size: 0.8em; }
-</style>
-</head>
-<body>
-	<div class="container">
-		<h1>MortyProxy</h1>
-`))
+	ctx.Write([]byte(MORTY_HTML_PAGE_START))
 	if err != nil {
 		log.Println("error:", err)
 		ctx.Write([]byte("<h2>Error: "))
@@ -933,15 +958,7 @@ h1 { font-size: 3em; }
 	} else {
 		ctx.Write([]byte(`<h3>Warning! This instance does not support direct URL opening.</h3>`))
 	}
-	ctx.Write([]byte(`
-	</div>
-	<div class="footer">
-		<p>Morty rewrites web pages to exclude malicious HTML tags and CSS/HTML attributes. It also replaces external resource references to prevent third-party information leaks.<br />
-		<a href="https://github.com/asciimoo/morty">view on github</a>
-		</p>
-	</div>
-</body>
-</html>`))
+	ctx.Write([]byte(MORTY_HTML_PAGE_END))
 }
 
 func main() {
