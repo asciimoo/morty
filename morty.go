@@ -782,6 +782,9 @@ func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue, escaped
 }
 
 func mergeURIs(u1, u2 *url.URL) *url.URL {
+	if u2 == nil {
+		return u1
+	}
 	return u1.ResolveReference(u2)
 }
 
