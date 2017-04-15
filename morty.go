@@ -199,9 +199,9 @@ type RequestConfig struct {
 var HTML_FORM_EXTENSION string = `<input type="hidden" name="mortyurl" value="%s" /><input type="hidden" name="mortyhash" value="%s" />`
 
 var HTML_BODY_EXTENSION string = `
+<input type="checkbox" id="mortytoggle" autocomplete="off" />
 <div id="mortyheader">
-  <input type="checkbox" id="mortytoggle" autocomplete="off" />
-  <p>This is a proxified and sanitized view of the page,<br />visit <a href="%s" rel="noreferrer">original site</a>.</p><p><label for="mortytoggle">hide</label></p>
+  <p>This is a <a href="https://github.com/asciimoo/morty">proxified and sanitized</a> view of the page,<br />visit <a href="%s" rel="noreferrer">original site</a>.</p><p><label for="mortytoggle">hide</label></p>
 </div>
 <style>
 #mortyheader { position: fixed; margin: 0; box-sizing: border-box; -webkit-box-sizing: border-box; top: 15%%; left: 0; max-width: 140px; overflow: hidden; z-index: 2147483647 !important; font-size: 12px; line-height: normal; border-width: 4px 4px 4px 0; border-style: solid; border-color: #1abc9c; background: #FFF; padding: 12px 12px 8px 8px; color: #444; }
@@ -210,7 +210,7 @@ var HTML_BODY_EXTENSION string = `
 #mortyheader a { color: #3498db; font-weight: bold; display: inline; }
 #mortyheader label { text-align: right; cursor: pointer; display: block; color: #444; }
 input[type=checkbox]#mortytoggle { display: none; }
-input[type=checkbox]#mortytoggle:checked ~ div { display: none; }
+input[type=checkbox]#mortytoggle:checked ~ div { display: none; visibility: hidden; }
 </style>
 `
 
