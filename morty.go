@@ -33,6 +33,8 @@ const (
 	STATE_IN_NOSCRIPT int = 2
 )
 
+const VERSION = "v0.1.0"
+
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
 }
@@ -969,8 +971,14 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:3000", "Listen address")
 	key := flag.String("key", "", "HMAC url validation key (hexadecimal encoded) - leave blank to disable")
 	ipv6 := flag.Bool("ipv6", false, "Allow IPv6 HTTP requests")
+	version := flag.Bool("version", false, "Show version")
 	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
 	flag.Parse()
+
+	if *version {
+		fmt.Println(VERSION)
+		return
+	}
 
 	if *ipv6 {
 		CLIENT.Dial = fasthttp.DialDualStack
