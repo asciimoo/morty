@@ -33,7 +33,7 @@ const (
 	STATE_IN_NOSCRIPT int = 2
 )
 
-const VERSION = "v0.1.0"
+const VERSION = "v0.2.0"
 
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
