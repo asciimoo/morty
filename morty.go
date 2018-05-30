@@ -13,6 +13,7 @@ import (
 	"log"
 	"mime"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -967,9 +968,13 @@ func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err erro
 }
 
 func main() {
-
-	listen := flag.String("listen", "127.0.0.1:3000", "Listen address")
-	key := flag.String("key", "", "HMAC url validation key (hexadecimal encoded) - leave blank to disable")
+	default_listen_addr := os.Getenv("MORTY_ADDRESS")
+	if default_listen_addr == "" {
+		default_listen_addr = "127.0.0.1:3000"
+	}
+	default_key := os.Getenv("MORTY_KEY")
+	listen := flag.String("listen", default_listen_addr, "Listen address")
+	key := flag.String("key", default_key, "HMAC url validation key (hexadecimal encoded) - leave blank to disable validation")
 	ipv6 := flag.Bool("ipv6", false, "Allow IPv6 HTTP requests")
 	version := flag.Bool("version", false, "Show version")
 	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
