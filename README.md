@@ -1,6 +1,6 @@
 # Morty
 
-[![Build Status](https://travis-ci.org/asciimoo/morty.svg)](https://travis-ci.org/ascimoo/morty)
+[![Build Status](https://travis-ci.org/asciimoo/morty.svg)](https://travis-ci.org/asciimoo/morty)
 
 Web content sanitizer proxy as a service
 
