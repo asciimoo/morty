@@ -19,6 +19,7 @@ Features:
 
 
 ## Installation and setup
+Requirement: Go version 1.10 or higher.
 
 ```
 $ go get github.com/asciimoo/morty
