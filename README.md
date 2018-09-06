@@ -1,5 +1,7 @@
 # Morty
 
+[![Build Status](https://travis-ci.org/asciimoo/morty.svg)](https://travis-ci.org/ascimoo/morty)
+
 Web content sanitizer proxy as a service
 
 Morty rewrites web pages to exclude malicious HTML tags and attributes. It also replaces external resource references to prevent third party information leaks.
