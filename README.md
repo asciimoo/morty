@@ -1,6 +1,6 @@
 # Morty
 
-[![Build Status](https://travis-ci.org/asciimoo/morty.svg)](https://travis-ci.org/ascimoo/morty)
+[![Build Status](https://travis-ci.org/asciimoo/morty.svg)](https://travis-ci.org/asciimoo/morty)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 Web content sanitizer proxy as a service
