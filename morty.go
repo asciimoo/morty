@@ -58,6 +58,7 @@ var ALLOWED_CONTENTTYPE_FILTER contenttype.Filter = contenttype.NewFilterOr([]co
 	contenttype.NewFilterEquals("image", "vnd.microsoft.icon", ""),
 	contenttype.NewFilterEquals("image", "bmp", ""),
 	contenttype.NewFilterEquals("image", "x-ms-bmp", ""),
+	contenttype.NewFilterEquals("image", "x-icon", ""),
 	// fonts
 	contenttype.NewFilterEquals("application", "font-otf", ""),
 	contenttype.NewFilterEquals("application", "font-ttf", ""),
