@@ -14,10 +14,12 @@ FROM alpine:latest
 
 EXPOSE 3000
 
-WORKDIR /
 RUN apk --no-cache add ca-certificates
-RUN mkdir /etc/morty
 
-COPY --from=builder /go/src/github.com/asciimoo/morty/morty /usr/bin/morty
+RUN adduser -D -h /usr/local/morty -s /bin/sh morty morty
 
-ENTRYPOINT ["/usr/bin/morty"]
+USER morty
+
+COPY --from=builder /go/src/github.com/asciimoo/morty/morty /usr/local/morty/morty
+
+ENTRYPOINT ["/usr/local/morty/morty"]
