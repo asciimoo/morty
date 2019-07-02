@@ -975,7 +975,7 @@ func main() {
 	}
 	default_key := os.Getenv("MORTY_KEY")
 	listen := flag.String("listen", default_listen_addr, "Listen address")
-	key := flag.String("key", default_key, "HMAC url validation key (hexadecimal encoded) - leave blank to disable validation")
+	key := flag.String("key", default_key, "HMAC url validation key (base64 encoded) - leave blank to disable validation")
 	ipv6 := flag.Bool("ipv6", false, "Allow IPv6 HTTP requests")
 	version := flag.Bool("version", false, "Show version")
 	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
@@ -993,7 +993,12 @@ func main() {
 	p := &Proxy{RequestTimeout: time.Duration(*requestTimeout) * time.Second}
 
 	if *key != "" {
-		p.Key = []byte(*key)
+		var err error
+		p.Key, err = base64.StdEncoding.DecodeString(*key)
+		if (err != nil) {
+		   log.Fatal("Error parsing -key", err.Error())
+		   os.Exit(1)
+		}
 	}
 
 	log.Println("listening on", *listen)
