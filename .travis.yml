@@ -3,13 +3,20 @@ language: go
 go:
   - 1.10.3
 
+before_install:
+  - go get golang.org/x/tools/cmd/cover
+  - go get github.com/mattn/goveralls
+
 script:
   # static checks
   - test -z "$(gofmt -l ./)"
   - test -z "$(go vet -v ./...)"
 
   # run tests on a standard platform
-  - go test -v ./...
+  - go test -v -covermode=count -coverprofile=coverage.out ./...
+  
+  # goveralls  
+  - $HOME/gopath/bin/goveralls -coverprofile=coverage.out -service=travis-ci -repotoken $COVERALLS_TOKEN
 
   # build test for supported platforms
   - GOOS=linux go build
