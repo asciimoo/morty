@@ -41,6 +41,7 @@ var DEBUG = os.Getenv("DEBUG") != "false"
 
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
+	ReadBufferSize:      16 * 1024,        // 16K
 }
 
 var CSS_URL_REGEXP *regexp.Regexp = regexp.MustCompile("url\\((['\"]?)[ \\t\\f]*([\u0009\u0021\u0023-\u0026\u0028\u002a-\u007E]+)(['\"]?)\\)?")
