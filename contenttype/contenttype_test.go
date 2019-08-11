@@ -1,6 +1,8 @@
 package contenttype
 
 import (
+	"bytes"
+	"fmt"
 	"testing"
 )
 
@@ -72,6 +74,7 @@ var contentTypeEqualsTestCases []ContentTypeEqualsTestCase = []ContentTypeEquals
 }
 
 type FilterTestCase struct {
+	Description string
 	Input       Filter
 	TrueValues  []ContentType
 	FalseValues []ContentType
@@ -79,6 +82,7 @@ type FilterTestCase struct {
 
 var filterTestCases []FilterTestCase = []FilterTestCase{
 	FilterTestCase{
+		"contains xml",
 		NewFilterContains("xml"),
 		[]ContentType{
 			ContentType{"xml", "", "", Map_Empty},
@@ -91,6 +95,7 @@ var filterTestCases []FilterTestCase = []FilterTestCase{
 		},
 	},
 	FilterTestCase{
+		"equals applications/xhtml",
 		NewFilterEquals("application", "xhtml", "*"),
 		[]ContentType{
 			ContentType{"application", "xhtml", "xml", Map_Empty},
@@ -104,6 +109,7 @@ var filterTestCases []FilterTestCase = []FilterTestCase{
 		},
 	},
 	FilterTestCase{
+		"equals application/*",
 		NewFilterEquals("application", "*", ""),
 		[]ContentType{
 			ContentType{"application", "xhtml", "", Map_Empty},
@@ -115,6 +121,7 @@ var filterTestCases []FilterTestCase = []FilterTestCase{
 		},
 	},
 	FilterTestCase{
+		"equals applications */javascript",
 		NewFilterEquals("*", "javascript", ""),
 		[]ContentType{
 			ContentType{"application", "javascript", "", Map_Empty},
@@ -126,6 +133,7 @@ var filterTestCases []FilterTestCase = []FilterTestCase{
 		},
 	},
 	FilterTestCase{
+		"equals applications/* or */javascript",
 		NewFilterOr([]Filter{
 			NewFilterEquals("application", "*", ""),
 			NewFilterEquals("*", "javascript", ""),
@@ -213,16 +221,28 @@ func TestParseContentType(t *testing.T) {
 	}
 }
 
+func FilterToString(m map[string]bool) string {
+	b := new(bytes.Buffer)
+	for key, value := range m {
+		if value {
+			fmt.Fprintf(b, "'%s'=true;", key)
+		} else {
+			fmt.Fprintf(b, "'%s'=false;", key)
+		}
+	}
+	return b.String()
+}
+
 func TestFilters(t *testing.T) {
 	for _, testCase := range filterTestCases {
 		for _, contentType := range testCase.TrueValues {
 			if !testCase.Input(contentType) {
-				t.Errorf(`Filter "%s" must accept the value "%s"`, testCase.Input, contentType)
+				t.Errorf(`Filter "%s" must accept the value "%s"`, testCase.Description, contentType)
 			}
 		}
 		for _, contentType := range testCase.FalseValues {
 			if testCase.Input(contentType) {
-				t.Errorf(`Filter "%s" mustn't accept the value "%s"`, testCase.Input, contentType)
+				t.Errorf(`Filter "%s" mustn't accept the value "%s"`, testCase.Description, contentType)
 			}
 		}
 	}
@@ -241,7 +261,7 @@ func TestFilterParameters(t *testing.T) {
 		// test
 		contentTypeOutput := ContentType{"", "", "", testCase.Output}
 		if !contentTypeOutput.Equals(contentType) {
-			t.Errorf(`FilterParameters error : %s becomes %s with this filter %s`, testCase.Input, contentType.Parameters, testCase.Filter)
+			t.Errorf(`FilterParameters error : %s becomes %s with this filter %s`, testCase.Input, contentType.Parameters, FilterToString(testCase.Filter))
 		}
 	}
 }

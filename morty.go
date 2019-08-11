@@ -995,9 +995,9 @@ func main() {
 	if *key != "" {
 		var err error
 		p.Key, err = base64.StdEncoding.DecodeString(*key)
-		if (err != nil) {
-		   log.Fatal("Error parsing -key", err.Error())
-		   os.Exit(1)
+		if err != nil {
+			log.Fatal("Error parsing -key", err.Error())
+			os.Exit(1)
 		}
 	}
 
