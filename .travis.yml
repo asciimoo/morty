@@ -1,14 +1,12 @@
 language: go
-
+sudo: false
 go:
-  - 1.10.3
-
+  - 1.12.x
 script:
-  # static checks
-  - test -z "$(gofmt -l ./)"
-  - test -z "$(go vet -v ./...)"
-
   # run tests on a standard platform
+  - OUT="$(go get -a)"; test -z "$OUT" || (echo "$OUT" && return 1)
+  - OUT="$(gofmt -l -d ./)"; test -z "$OUT" || (echo "$OUT" && return 1)
+  - go vet -v ./...
   - go test -v ./...
 
   # build test for supported platforms
