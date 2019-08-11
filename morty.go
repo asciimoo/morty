@@ -36,6 +36,8 @@ const (
 
 const VERSION = "v0.2.0"
 
+const MAX_REDIRECT_COUNT = 5
+
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
 }
@@ -287,7 +289,11 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
-	parsedURI, err := url.Parse(string(requestURI))
+	p.ProcessUri(ctx, string(requestURI), 0)
+}
+
+func (p *Proxy) ProcessUri(ctx *fasthttp.RequestCtx, requestURI string, redirectCount int) {
+	parsedURI, err := url.Parse(requestURI)
 
 	if err != nil {
 		// HTTP status code 500 : Internal Server Error
@@ -338,13 +344,24 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		case 301, 302, 303, 307, 308:
 			loc := resp.Header.Peek("Location")
 			if loc != nil {
-				rc := &RequestConfig{Key: p.Key, BaseURL: parsedURI}
-				url, err := rc.ProxifyURI(loc)
-				if err == nil {
-					ctx.SetStatusCode(resp.StatusCode())
-					ctx.Response.Header.Add("Location", url)
-					log.Println("redirect to", string(loc))
+				log.Println("redirect to", string(loc))
+				if ctx.IsGet() {
+					// GET method: Morty follows the redirect
+					if redirectCount < MAX_REDIRECT_COUNT {
+						p.ProcessUri(ctx, string(loc), redirectCount+1)
+					} else {
+						p.serveMainPage(ctx, 310, errors.New("Too many redirects"))
+					}
 					return
+				} else {
+					// Other HTTP methods: Morty does NOT follow the redirect
+					rc := &RequestConfig{Key: p.Key, BaseURL: parsedURI}
+					url, err := rc.ProxifyURI(loc)
+					if err == nil {
+						ctx.SetStatusCode(resp.StatusCode())
+						ctx.Response.Header.Add("Location", url)
+						return
+					}
 				}
 			}
 		}
