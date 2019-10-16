@@ -36,6 +36,8 @@ const (
 
 const VERSION = "v0.2.0"
 
+var DEBUG = os.Getenv("DEBUG") != "false"
+
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
 }
@@ -307,7 +309,9 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
 	requestURIStr := string(requestURI)
 
-	log.Println("getting", requestURIStr)
+	if DEBUG {
+		log.Println("getting", requestURIStr)
+	}
 
 	req.SetRequestURI(requestURIStr)
 	req.Header.SetUserAgentBytes([]byte("Mozilla/5.0 (Windows NT 10.0; WOW64; rv:50.0) Gecko/20100101 Firefox/50.0"))
@@ -343,7 +347,9 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 				if err == nil {
 					ctx.SetStatusCode(resp.StatusCode())
 					ctx.Response.Header.Add("Location", url)
-					log.Println("redirect to", string(loc))
+					if DEBUG {
+						log.Println("redirect to", string(loc))
+					}
 					return
 				}
 			}
@@ -512,7 +518,7 @@ func sanitizeCSS(rc *RequestConfig, out io.Writer, css []byte) {
 			out.Write(css[startIndex:urlStart])
 			out.Write([]byte(uri))
 			startIndex = urlEnd
-		} else {
+		} else if DEBUG {
 			log.Println("cannot proxify css uri:", string(css[urlStart:urlEnd]))
 		}
 	}
@@ -533,7 +539,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 		if token == html.ErrorToken {
 			err := decoder.Err()
 			if err != io.EOF {
-				log.Println("failed to parse HTML:")
+				log.Println("failed to parse HTML")
 			}
 			break
 		}
@@ -775,7 +781,7 @@ func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue, escaped
 	case "src", "href", "action":
 		if uri, err := rc.ProxifyURI(attrValue); err == nil {
 			fmt.Fprintf(out, " %s=\"%s\"", attrName, uri)
-		} else {
+		} else if DEBUG {
 			log.Println("cannot proxify uri:", string(attrValue))
 		}
 	case "style":
@@ -925,7 +931,9 @@ func verifyRequestURI(uri, hashMsg, key []byte) bool {
 	h := make([]byte, hex.DecodedLen(len(hashMsg)))
 	_, err := hex.Decode(h, hashMsg)
 	if err != nil {
-		log.Println("hmac error:", err)
+		if DEBUG {
+			log.Println("hmac error:", err)
+		}
 		return false
 	}
 	mac := hmac.New(sha256.New, key)
@@ -951,7 +959,9 @@ func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err erro
 	ctx.SetStatusCode(statusCode)
 	ctx.Write([]byte(MORTY_HTML_PAGE_START))
 	if err != nil {
-		log.Println("error:", err)
+		if DEBUG {
+			log.Println("error:", err)
+		}
 		ctx.Write([]byte("<h2>Error: "))
 		ctx.Write([]byte(html.EscapeString(err.Error())))
 		ctx.Write([]byte("</h2>"))
