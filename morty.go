@@ -36,7 +36,7 @@ const (
 
 const VERSION = "v0.2.0"
 
-var DEBUG = os.Getenv("DEBUG") == "true"
+var DEBUG = os.Getenv("DEBUG") != "false"
 
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
