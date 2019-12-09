@@ -71,7 +71,7 @@ var ALLOWED_CONTENTTYPE_FILTER contenttype.Filter = contenttype.NewFilterOr([]co
 var ALLOWED_CONTENTTYPE_ATTACHMENT_FILTER contenttype.Filter = contenttype.NewFilterOr([]contenttype.Filter{
 	// texts
 	contenttype.NewFilterEquals("text", "csv", ""),
-	contenttype.NewFilterEquals("text", "tab-separated-value", ""),
+	contenttype.NewFilterEquals("text", "tab-separated-values", ""),
 	contenttype.NewFilterEquals("text", "plain", ""),
 	// API
 	contenttype.NewFilterEquals("application", "json", ""),
