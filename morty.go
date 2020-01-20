@@ -273,6 +273,12 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
+	requestURIQuery := ctx.QueryArgs().QueryString()
+	if len(requestURIQuery) > 0 {
+		requestURI = append(requestURI, '?')
+		requestURI = append(requestURI, requestURIQuery...)
+	}
+
 	parsedURI, err := url.Parse(string(requestURI))
 
 	if err != nil {
