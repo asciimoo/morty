@@ -191,16 +191,23 @@ var HTML_FORM_EXTENSION string = `<input type="hidden" name="mortyurl" value="%s
 var HTML_BODY_EXTENSION string = `
 <input type="checkbox" id="mortytoggle" autocomplete="off" />
 <div id="mortyheader">
-  <p>This is a <a href="https://github.com/asciimoo/morty">proxified and sanitized</a> view of the page,<br />visit <a href="%s" rel="noreferrer">original site</a>.</p><p><label for="mortytoggle">hide</label></p>
+  <form method="get">
+    <label for="mortytoggle">hide</label>
+    <span><a href="/">Morty Proxy</a></span>
+    <input type="url" value="%s" name="mortyurl" readonly="true" />
+    This is a <a href="https://github.com/asciimoo/morty">proxified and sanitized</a> view of the page, visit <a href="%s" rel="noreferrer">original site</a>.
+  </form>
 </div>
 <style>
-#mortyheader { position: fixed; margin: 0; box-sizing: border-box; -webkit-box-sizing: border-box; top: 15%%; left: 0; max-width: 140px; overflow: hidden; z-index: 2147483647 !important; font-size: 12px; line-height: normal; border-width: 4px 4px 4px 0; border-style: solid; border-color: #1abc9c; background: #FFF; padding: 12px 12px 8px 8px; color: #444; }
-#mortyheader * { box-sizing: content-box; margin: 0; border: none; padding: 0; overflow: hidden; z-index: 2147483647 !important; line-height: 1em; font-size: 12px !important; font-family: sans !important; font-weight: normal; text-align: left; text-decoration: none; }
+body{ position: absolute !important; top: 42px !important; left: 0 !important; right: 0 !important; bottom: 0 !important; }
+#mortyheader { position: fixed; margin: 0; box-sizing: border-box; -webkit-box-sizing: border-box; top: 0; left: 0; right: 0; z-index: 2147483647 !important; font-size: 12px; line-height: normal; border-width: 0px 0px 2px 0; border-style: solid; border-color: #AAAAAA; background: #FFF; padding: 4px; color: #444; height: 42px; }
 #mortyheader p { padding: 0 0 0.7em 0; display: block; }
 #mortyheader a { color: #3498db; font-weight: bold; display: inline; }
-#mortyheader label { text-align: right; cursor: pointer; display: block; color: #444; }
+#mortyheader label { text-align: right; cursor: pointer; position: fixed; right: 4px; top: 4px; display: block; color: #444; }
+#mortyheader > form > span { font-size: 24px; font-weight: bold; margin-right: 20px; margin-left: 20px; }
 input[type=checkbox]#mortytoggle { display: none; }
 input[type=checkbox]#mortytoggle:checked ~ div { display: none; visibility: hidden; }
+#mortyheader input[type=url] { width: 50%%; padding: 4px; font-size: 16px; }
 </style>
 `
 
@@ -636,7 +643,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 				writeEndTag := true
 				switch string(tag) {
 				case "body":
-					fmt.Fprintf(out, HTML_BODY_EXTENSION, rc.BaseURL.String())
+					fmt.Fprintf(out, HTML_BODY_EXTENSION, rc.BaseURL.String(), rc.BaseURL.String())
 				case "style":
 					state = STATE_DEFAULT
 				case "noscript":
