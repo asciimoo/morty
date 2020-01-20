@@ -294,6 +294,11 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	if parsedURI.Scheme == "" {
+		parsedURI.Scheme = "https"
+		requestURI = append([]byte("https://"), requestURI...)
+	}
+
 	// Serve an intermediate page for protocols other than HTTP(S)
 	if (parsedURI.Scheme != "http" && parsedURI.Scheme != "https") || strings.HasSuffix(parsedURI.Host, ".onion") {
 		p.serveExitMortyPage(ctx, parsedURI)
