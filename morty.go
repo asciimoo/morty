@@ -183,8 +183,9 @@ type Proxy struct {
 }
 
 type RequestConfig struct {
-	Key     []byte
-	BaseURL *url.URL
+	Key          []byte
+	BaseURL      *url.URL
+	BodyInjected bool
 }
 
 type HTMLBodyExtParam struct {
@@ -454,7 +455,20 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	case contentType.SubType == "css" && contentType.Suffix == "":
 		sanitizeCSS(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
 	case contentType.SubType == "html" && contentType.Suffix == "":
-		sanitizeHTML(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
+		rc := &RequestConfig{Key: p.Key, BaseURL: parsedURI}
+		sanitizeHTML(rc, ctx, responseBody)
+		if !rc.BodyInjected {
+			p := HTMLBodyExtParam{rc.BaseURL.String(), false}
+			if len(rc.Key) > 0 {
+				p.HasMortyKey = true
+			}
+			err := HTML_BODY_EXTENSION.Execute(ctx, p)
+			if err != nil {
+				if DEBUG {
+					fmt.Println("failed to inject body extension", err)
+				}
+			}
+		}
 	default:
 		if contentDispositionBytes != nil {
 			ctx.Response.Header.AddBytesV("Content-Disposition", contentDispositionBytes)
@@ -678,6 +692,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 							fmt.Println("failed to inject body extension", err)
 						}
 					}
+					rc.BodyInjected = true
 				case "style":
 					state = STATE_DEFAULT
 				case "noscript":
