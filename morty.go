@@ -245,7 +245,7 @@ func init() {
 	FAVICON_BYTES, _ = base64.StdEncoding.DecodeString(FaviconBase64)
 	var err error
 	HTML_FORM_EXTENSION, err = template.New("html_form_extension").Parse(
-		`<input type="hidden" name="mortyurl" value="{{.BaseURL}}" /><input type="hidden" name="mortyhash" value="{{.MortyHash}}" />`)
+		`<input type="hidden" name="mortyurl" value="{{.BaseURL}}" />{{if .MortyHash}}<input type="hidden" name="mortyhash" value="{{.MortyHash}}" />{{end}}`)
 	if err != nil {
 		panic(err)
 	}
