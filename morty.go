@@ -193,8 +193,8 @@ type HTMLBodyExtParam struct {
 }
 
 type HTMLFormExtParam struct {
-	BaseURL  string
-	MortyKey string
+	BaseURL   string
+	MortyHash string
 }
 
 var HTML_FORM_EXTENSION *template.Template
@@ -245,7 +245,7 @@ func init() {
 	FAVICON_BYTES, _ = base64.StdEncoding.DecodeString(FaviconBase64)
 	var err error
 	HTML_FORM_EXTENSION, err = template.New("html_form_extension").Parse(
-		`<input type="hidden" name="mortyurl" value="{{.BaseURL}}" /><input type="hidden" name="mortyhash" value="{{.MortyKey}}" />`)
+		`<input type="hidden" name="mortyurl" value="{{.BaseURL}}" /><input type="hidden" name="mortyhash" value="{{.MortyHash}}" />`)
 	if err != nil {
 		panic(err)
 	}
