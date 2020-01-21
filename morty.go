@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"mime"
@@ -186,31 +187,18 @@ type RequestConfig struct {
 	BaseURL *url.URL
 }
 
-var HTML_FORM_EXTENSION string = `<input type="hidden" name="mortyurl" value="%s" /><input type="hidden" name="mortyhash" value="%s" />`
+type HTMLBodyExtParam struct {
+	BaseURL     string
+	HasMortyKey bool
+}
 
-var HTML_BODY_EXTENSION string = `
-<input type="checkbox" id="mortytoggle" autocomplete="off" />
-<div id="mortyheader">
-  <form method="get">
-    <label for="mortytoggle">hide</label>
-    <span><a href="/">Morty Proxy</a></span>
-    <input type="url" value="%s" name="mortyurl" readonly="true" />
-    This is a <a href="https://github.com/asciimoo/morty">proxified and sanitized</a> view of the page, visit <a href="%s" rel="noreferrer">original site</a>.
-  </form>
-</div>
-<style>
-body{ position: absolute !important; top: 42px !important; left: 0 !important; right: 0 !important; bottom: 0 !important; }
-#mortyheader { position: fixed; margin: 0; box-sizing: border-box; -webkit-box-sizing: border-box; top: 0; left: 0; right: 0; z-index: 2147483647 !important; font-size: 12px; line-height: normal; border-width: 0px 0px 2px 0; border-style: solid; border-color: #AAAAAA; background: #FFF; padding: 4px; color: #444; height: 42px; }
-#mortyheader p { padding: 0 0 0.7em 0; display: block; }
-#mortyheader a { color: #3498db; font-weight: bold; display: inline; }
-#mortyheader label { text-align: right; cursor: pointer; position: fixed; right: 4px; top: 4px; display: block; color: #444; }
-#mortyheader > form > span { font-size: 24px; font-weight: bold; margin-right: 20px; margin-left: 20px; }
-input[type=checkbox]#mortytoggle { display: none; }
-input[type=checkbox]#mortytoggle:checked ~ div { display: none; visibility: hidden; }
-#mortyheader input[type=url] { width: 50%%; padding: 4px; font-size: 16px; }
-</style>
-`
+type HTMLFormExtParam struct {
+	BaseURL  string
+	MortyKey string
+}
 
+var HTML_FORM_EXTENSION *template.Template
+var HTML_BODY_EXTENSION *template.Template
 var HTML_HEAD_CONTENT_TYPE string = `<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="referrer" content="no-referrer">
@@ -255,6 +243,37 @@ func init() {
 	FaviconBase64 := "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeaR9cIAAAAASUVORK5CYII"
 
 	FAVICON_BYTES, _ = base64.StdEncoding.DecodeString(FaviconBase64)
+	var err error
+	HTML_FORM_EXTENSION, err = template.New("html_form_extension").Parse(
+		`<input type="hidden" name="mortyurl" value="{{.BaseURL}}" /><input type="hidden" name="mortyhash" value="{{.MortyKey}}" />`)
+	if err != nil {
+		panic(err)
+	}
+	HTML_BODY_EXTENSION, err = template.New("html_body_extension").Parse(`
+<input type="checkbox" id="mortytoggle" autocomplete="off" />
+<div id="mortyheader">
+  <form method="get">
+    <label for="mortytoggle">hide</label>
+    <span><a href="/">Morty Proxy</a></span>
+    <input type="url" value="{{.BaseURL}}" name="mortyurl" {{if .HasMortyKey }}readonly="true"{{end}} />
+    This is a <a href="https://github.com/asciimoo/morty">proxified and sanitized</a> view of the page, visit <a href="{{.BaseURL}}" rel="noreferrer">original site</a>.
+  </form>
+</div>
+<style>
+body{ position: absolute !important; top: 42px !important; left: 0 !important; right: 0 !important; bottom: 0 !important; }
+#mortyheader { position: fixed; margin: 0; box-sizing: border-box; -webkit-box-sizing: border-box; top: 0; left: 0; right: 0; z-index: 2147483647 !important; font-size: 12px; line-height: normal; border-width: 0px 0px 2px 0; border-style: solid; border-color: #AAAAAA; background: #FFF; padding: 4px; color: #444; height: 42px; }
+#mortyheader p { padding: 0 0 0.7em 0; display: block; }
+#mortyheader a { color: #3498db; font-weight: bold; display: inline; }
+#mortyheader label { text-align: right; cursor: pointer; position: fixed; right: 4px; top: 4px; display: block; color: #444; }
+#mortyheader > form > span { font-size: 24px; font-weight: bold; margin-right: 20px; margin-left: 20px; }
+input[type=checkbox]#mortytoggle { display: none; }
+input[type=checkbox]#mortytoggle:checked ~ div { display: none; visibility: hidden; }
+#mortyheader input[type=url] { width: 50%; padding: 4px; font-size: 16px; }
+</style>
+`)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
@@ -490,12 +509,9 @@ func popRequestParam(ctx *fasthttp.RequestCtx, paramName []byte) []byte {
 
 	if param == nil {
 		param = ctx.PostArgs().PeekBytes(paramName)
-		if param != nil {
-			ctx.PostArgs().DelBytes(paramName)
-		}
-	} else {
-		ctx.QueryArgs().DelBytes(paramName)
+		ctx.PostArgs().DelBytes(paramName)
 	}
+	ctx.QueryArgs().DelBytes(paramName)
 
 	return param
 }
@@ -639,8 +655,12 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					if rc.Key != nil {
 						key = hash(urlStr, rc.Key)
 					}
-					fmt.Fprintf(out, HTML_FORM_EXTENSION, urlStr, key)
-
+					err := HTML_FORM_EXTENSION.Execute(out, HTMLFormExtParam{urlStr, key})
+					if err != nil {
+						if DEBUG {
+							fmt.Println("failed to inject body extension", err)
+						}
+					}
 				}
 
 			case html.EndTagToken:
@@ -648,7 +668,16 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 				writeEndTag := true
 				switch string(tag) {
 				case "body":
-					fmt.Fprintf(out, HTML_BODY_EXTENSION, rc.BaseURL.String(), rc.BaseURL.String())
+					p := HTMLBodyExtParam{rc.BaseURL.String(), false}
+					if len(rc.Key) > 0 {
+						p.HasMortyKey = true
+					}
+					err := HTML_BODY_EXTENSION.Execute(out, p)
+					if err != nil {
+						if DEBUG {
+							fmt.Println("failed to inject body extension", err)
+						}
+					}
 				case "style":
 					state = STATE_DEFAULT
 				case "noscript":
