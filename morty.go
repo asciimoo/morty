@@ -302,7 +302,11 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
 	requestURIQuery := ctx.QueryArgs().QueryString()
 	if len(requestURIQuery) > 0 {
-		requestURI = append(requestURI, '?')
+		if bytes.ContainsRune(requestURI, '?') {
+			requestURI = append(requestURI, '&')
+		} else {
+			requestURI = append(requestURI, '?')
+		}
 		requestURI = append(requestURI, requestURIQuery...)
 	}
 
