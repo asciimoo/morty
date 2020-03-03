@@ -342,7 +342,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	requestURIStr := string(requestURI)
 
 	if cfg.Debug {
-		log.Println("getting", requestURIStr)
+		log.Println(string(ctx.Method()), requestURIStr)
 	}
 
 	req.SetRequestURI(requestURIStr)
@@ -421,7 +421,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		} else {
 			// deny access to forbidden content type
 			// HTTP status code 403 : Forbidden
-			p.serveMainPage(ctx, 403, errors.New("forbidden content type"))
+			p.serveMainPage(ctx, 403, errors.New("forbidden content type "+parsedURI.String()))
 			return
 		}
 	}
