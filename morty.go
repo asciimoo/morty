@@ -321,8 +321,12 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	}
 
 	if parsedURI.Scheme == "" {
-		parsedURI.Scheme = "https"
 		requestURI = append([]byte("https://"), requestURI...)
+		parsedURI, err = url.Parse(string(requestURI))
+		if err != nil {
+			p.serveMainPage(ctx, 500, err)
+			return
+		}
 	}
 
 	// Serve an intermediate page for protocols other than HTTP(S)
