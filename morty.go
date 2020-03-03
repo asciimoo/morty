@@ -27,6 +27,7 @@ import (
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
 
+	"github.com/asciimoo/morty/config"
 	"github.com/asciimoo/morty/contenttype"
 )
 
@@ -38,14 +39,12 @@ const (
 
 const VERSION = "v0.2.0"
 
-var DEBUG = os.Getenv("DEBUG") != "false"
-
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
 	ReadBufferSize:      16 * 1024,        // 16K
 }
 
-var CSS_URL_REGEXP *regexp.Regexp = regexp.MustCompile("url\\((['\"]?)[ \\t\\f]*([\u0009\u0021\u0023-\u0026\u0028\u002a-\u007E]+)(['\"]?)\\)?")
+var cfg *config.Config = config.DefaultConfig
 
 var ALLOWED_CONTENTTYPE_FILTER contenttype.Filter = contenttype.NewFilterOr([]contenttype.Filter{
 	// html
@@ -176,6 +175,8 @@ var LINK_HTTP_EQUIV_SAFE_VALUES [][]byte = [][]byte{
 	// []byte("location"), TODO URL rewrite
 	[]byte("content-language"),
 }
+
+var CSS_URL_REGEXP *regexp.Regexp = regexp.MustCompile("url\\((['\"]?)[ \\t\\f]*([\u0009\u0021\u0023-\u0026\u0028\u002a-\u007E]+)(['\"]?)\\)?")
 
 type Proxy struct {
 	Key            []byte
@@ -336,7 +337,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 
 	requestURIStr := string(requestURI)
 
-	if DEBUG {
+	if cfg.Debug {
 		log.Println("getting", requestURIStr)
 	}
 
@@ -374,7 +375,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 				if err == nil {
 					ctx.SetStatusCode(resp.StatusCode())
 					ctx.Response.Header.Add("Location", url)
-					if DEBUG {
+					if cfg.Debug {
 						log.Println("redirect to", string(loc))
 					}
 					return
@@ -469,7 +470,7 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 			}
 			err := HTML_BODY_EXTENSION.Execute(ctx, p)
 			if err != nil {
-				if DEBUG {
+				if cfg.Debug {
 					fmt.Println("failed to inject body extension", err)
 				}
 			}
@@ -555,7 +556,7 @@ func sanitizeCSS(rc *RequestConfig, out io.Writer, css []byte) {
 			out.Write(css[startIndex:urlStart])
 			out.Write([]byte(uri))
 			startIndex = urlEnd
-		} else if DEBUG {
+		} else if cfg.Debug {
 			log.Println("cannot proxify css uri:", string(css[urlStart:urlEnd]))
 		}
 	}
@@ -676,7 +677,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					}
 					err := HTML_FORM_EXTENSION.Execute(out, HTMLFormExtParam{urlStr, key})
 					if err != nil {
-						if DEBUG {
+						if cfg.Debug {
 							fmt.Println("failed to inject body extension", err)
 						}
 					}
@@ -693,7 +694,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					}
 					err := HTML_BODY_EXTENSION.Execute(out, p)
 					if err != nil {
-						if DEBUG {
+						if cfg.Debug {
 							fmt.Println("failed to inject body extension", err)
 						}
 					}
@@ -832,7 +833,7 @@ func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue, escaped
 	case "src", "href", "action":
 		if uri, err := rc.ProxifyURI(attrValue); err == nil {
 			fmt.Fprintf(out, " %s=\"%s\"", attrName, uri)
-		} else if DEBUG {
+		} else if cfg.Debug {
 			log.Println("cannot proxify uri:", string(attrValue))
 		}
 	case "style":
@@ -982,7 +983,7 @@ func verifyRequestURI(uri, hashMsg, key []byte) bool {
 	h := make([]byte, hex.DecodedLen(len(hashMsg)))
 	_, err := hex.Decode(h, hashMsg)
 	if err != nil {
-		if DEBUG {
+		if cfg.Debug {
 			log.Println("hmac error:", err)
 		}
 		return false
@@ -1010,7 +1011,7 @@ func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err erro
 	ctx.SetStatusCode(statusCode)
 	ctx.Write([]byte(MORTY_HTML_PAGE_START))
 	if err != nil {
-		if DEBUG {
+		if cfg.Debug {
 			log.Println("error:", err)
 		}
 		ctx.Write([]byte("<h2>Error: "))
@@ -1030,14 +1031,11 @@ func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err erro
 }
 
 func main() {
-	default_listen_addr := os.Getenv("MORTY_ADDRESS")
-	if default_listen_addr == "" {
-		default_listen_addr = "127.0.0.1:3000"
-	}
-	default_key := os.Getenv("MORTY_KEY")
-	listen := flag.String("listen", default_listen_addr, "Listen address")
-	key := flag.String("key", default_key, "HMAC url validation key (base64 encoded) - leave blank to disable validation")
-	ipv6 := flag.Bool("ipv6", false, "Allow IPv6 HTTP requests")
+	cfg.ListenAddress = *flag.String("listen", cfg.ListenAddress, "Listen address")
+	cfg.Key = *flag.String("key", cfg.Key, "HMAC url validation key (base64 encoded) - leave blank to disable validation")
+	cfg.IPV6 = *flag.Bool("ipv6", cfg.IPV6, "Allow IPv6 HTTP requests")
+	cfg.Debug = *flag.Bool("debug", cfg.Debug, "Debug mode")
+	cfg.RequestTimeout = *flag.Uint("timeout", cfg.RequestTimeout, "Request timeout")
 	version := flag.Bool("version", false, "Show version")
 	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
 	socks5 := flag.String("socks5", "", "SOCKS5 proxy")
@@ -1056,21 +1054,24 @@ func main() {
 		// this disables CLIENT.DialDualStack
 		CLIENT.Dial = fasthttpproxy.FasthttpSocksDialer(*socks5)
 	}
+	if cfg.IPV6 {
+		CLIENT.Dial = fasthttp.DialDualStack
+	}
 
-	p := &Proxy{RequestTimeout: time.Duration(*requestTimeout) * time.Second}
+	p := &Proxy{RequestTimeout: time.Duration(cfg.RequestTimeout) * time.Second}
 
-	if *key != "" {
+	if cfg.Key != "" {
 		var err error
-		p.Key, err = base64.StdEncoding.DecodeString(*key)
+		p.Key, err = base64.StdEncoding.DecodeString(cfg.Key)
 		if err != nil {
 			log.Fatal("Error parsing -key", err.Error())
 			os.Exit(1)
 		}
 	}
 
-	log.Println("listening on", *listen)
+	log.Println("listening on", cfg.ListenAddress)
 
-	if err := fasthttp.ListenAndServe(*listen, p.RequestHandler); err != nil {
+	if err := fasthttp.ListenAndServe(cfg.ListenAddress, p.RequestHandler); err != nil {
 		log.Fatal("Error in ListenAndServe:", err)
 	}
 }
