@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/asciimoo/morty.svg)](https://travis-ci.org/asciimoo/morty)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Docker Pulls](https://img.shields.io/docker/pulls/dalf/morty)](https://hub.docker.com/r/dalf/morty)
 
 Web content sanitizer proxy as a service
 
