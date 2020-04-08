@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpproxy"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
@@ -989,6 +990,7 @@ func main() {
 	ipv6 := flag.Bool("ipv6", false, "Allow IPv6 HTTP requests")
 	version := flag.Bool("version", false, "Show version")
 	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
+	socks5 := flag.String("socks5", "", "SOCKS5 proxy")
 	flag.Parse()
 
 	if *version {
@@ -997,7 +999,12 @@ func main() {
 	}
 
 	if *ipv6 {
-		CLIENT.Dial = fasthttp.DialDualStack
+		CLIENT.DialDualStack = true
+	}
+
+	if *socks5 != "" {
+		// this disables CLIENT.DialDualStack
+		CLIENT.Dial = fasthttpproxy.FasthttpSocksDialer(*socks5)
 	}
 
 	p := &Proxy{RequestTimeout: time.Duration(*requestTimeout) * time.Second}
