@@ -888,7 +888,8 @@ func (rc *RequestConfig) ProxifyURI(uri []byte) (string, error) {
 
 	if REPLACE_SITES {
 		for site, replace := range siteList {
-			if u.Host == site {
+			// Also check the www.
+			if u.Host == site || "www."+site == u.Host {
 				u.Host = replace
 			}
 		}
@@ -1004,7 +1005,7 @@ func main() {
 	version := flag.Bool("version", false, "Show version")
 	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
 	socks5 := flag.String("socks5", "", "SOCKS5 proxy")
-	siteReplace := flag.Bool("replace", false, "Enable experimental site redirection")
+	siteReplace := flag.Bool("replace", false, "Enable site replacement")
 	flag.Parse()
 
 	if *version {
