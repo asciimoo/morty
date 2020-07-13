@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"mime"
 	"net/url"
@@ -38,7 +40,7 @@ const (
 const VERSION = "v0.2.0"
 
 var DEBUG = os.Getenv("DEBUG") != "false"
-var REPLACE_SITES = os.Getenv("REPLACE_SITES") != "false"
+var REPLACE_SITES = false
 
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
@@ -96,12 +98,6 @@ var ALLOWED_CONTENTTYPE_ATTACHMENT_FILTER contenttype.Filter = contenttype.NewFi
 
 var ALLOWED_CONTENTTYPE_PARAMETERS map[string]bool = map[string]bool{
 	"charset": true,
-}
-
-// Replace sites with more trusted/privacy respecting alternatives
-var REPLACEMENT_SITES = map[string]string{
-	"twitter.com": "nitter.net",
-	"youtube.com": "invidio.us",
 }
 
 var UNSAFE_ELEMENTS [][]byte = [][]byte{
@@ -267,6 +263,8 @@ var MORTY_HTML_PAGE_END string = `
 </html>`
 
 var FAVICON_BYTES []byte
+
+var siteList = make(map[string]string)
 
 func init() {
 	FaviconBase64 := "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeaR9cIAAAAASUVORK5CYII"
@@ -889,7 +887,7 @@ func (rc *RequestConfig) ProxifyURI(uri []byte) (string, error) {
 	}
 
 	if REPLACE_SITES {
-		for site, replace := range REPLACEMENT_SITES {
+		for site, replace := range siteList {
 			if u.Host == site {
 				u.Host = replace
 			}
@@ -1006,6 +1004,7 @@ func main() {
 	version := flag.Bool("version", false, "Show version")
 	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
 	socks5 := flag.String("socks5", "", "SOCKS5 proxy")
+	siteReplace := flag.Bool("replace", false, "Enable experimental site redirection")
 	flag.Parse()
 
 	if *version {
@@ -1020,6 +1019,21 @@ func main() {
 	if *socks5 != "" {
 		// this disables CLIENT.DialDualStack
 		CLIENT.Dial = fasthttpproxy.FasthttpSocksDialer(*socks5)
+	}
+
+	if *siteReplace {
+		log.Println("Enabling site replacement")
+
+		loadedSiteList, err := ioutil.ReadFile("sites.json")
+		if err != nil {
+			log.Printf("Failed to read sites.json: %s\n", err)
+		}
+
+		err = json.Unmarshal(loadedSiteList, &siteList)
+		if err != nil {
+			log.Printf("Error: %s\n", err)
+		}
+		REPLACE_SITES = true
 	}
 
 	p := &Proxy{RequestTimeout: time.Duration(*requestTimeout) * time.Second}
