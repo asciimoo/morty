@@ -38,6 +38,7 @@ const (
 const VERSION = "v0.2.0"
 
 var DEBUG = os.Getenv("DEBUG") != "false"
+var REPLACE_SITES = os.Getenv("REPLACE_SITES") != "false"
 
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
@@ -95,6 +96,12 @@ var ALLOWED_CONTENTTYPE_ATTACHMENT_FILTER contenttype.Filter = contenttype.NewFi
 
 var ALLOWED_CONTENTTYPE_PARAMETERS map[string]bool = map[string]bool{
 	"charset": true,
+}
+
+// Replace sites with more trusted/privacy respecting alternatives
+var REPLACEMENT_SITES = map[string]string{
+	"twitter.com": "nitter.net",
+	"youtube.com": "invidio.us",
 }
 
 var UNSAFE_ELEMENTS [][]byte = [][]byte{
@@ -879,6 +886,14 @@ func (rc *RequestConfig) ProxifyURI(uri []byte) (string, error) {
 	u, err := url.Parse(string(uri))
 	if err != nil {
 		return "", err
+	}
+
+	if REPLACE_SITES {
+		for site, replace := range REPLACEMENT_SITES {
+			if u.Host == site {
+				u.Host = replace
+			}
+		}
 	}
 
 	// get the fragment (with the prefix "#")
