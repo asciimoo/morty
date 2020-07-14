@@ -37,6 +37,12 @@ Morty can be configured using the following environment variables:
 - `MORTY_KEY`: HMAC url validation key (base64 encoded) to prevent direct URL opening. Leave blank to disable validation. Use `openssl rand -base64 33` to generate.
 - `DEBUG`: Enable/disable proxy and redirection logs (default to `true`). Set to `false` to disable.
 
+### Site replacement
+
+Morty can be told to replace sites with alternative ones, in the default `sites.json` we redirect YouTube to Invidious and Twitter to Nitter.
+
+To enable this feature run morty with the `-replace` flag.
+
 ### Docker
 
 ```

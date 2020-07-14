@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"mime"
 	"net/url"
@@ -38,6 +40,7 @@ const (
 const VERSION = "v0.2.0"
 
 var DEBUG = os.Getenv("DEBUG") != "false"
+var REPLACE_SITES = false
 
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
@@ -243,6 +246,8 @@ var MORTY_HTML_PAGE_END string = `
 </html>`
 
 var FAVICON_BYTES []byte
+
+var siteList = make(map[string]string)
 
 func init() {
 	FaviconBase64 := "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeaR9cIAAAAASUVORK5CYII"
@@ -864,6 +869,15 @@ func (rc *RequestConfig) ProxifyURI(uri []byte) (string, error) {
 		return "", err
 	}
 
+	if REPLACE_SITES {
+		for site, replace := range siteList {
+			// Also check the www.
+			if u.Host == site || "www."+site == u.Host {
+				u.Host = replace
+			}
+		}
+	}
+
 	// get the fragment (with the prefix "#")
 	fragment := ""
 	if len(u.Fragment) > 0 {
@@ -974,6 +988,7 @@ func main() {
 	version := flag.Bool("version", false, "Show version")
 	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
 	socks5 := flag.String("socks5", "", "SOCKS5 proxy")
+	siteReplace := flag.Bool("replace", false, "Enable site replacement")
 	flag.Parse()
 
 	if *version {
@@ -988,6 +1003,21 @@ func main() {
 	if *socks5 != "" {
 		// this disables CLIENT.DialDualStack
 		CLIENT.Dial = fasthttpproxy.FasthttpSocksDialer(*socks5)
+	}
+
+	if *siteReplace {
+		log.Println("Enabling site replacement")
+
+		loadedSiteList, err := ioutil.ReadFile("sites.json")
+		if err != nil {
+			log.Printf("Failed to read sites.json: %s\n", err)
+		}
+
+		err = json.Unmarshal(loadedSiteList, &siteList)
+		if err != nil {
+			log.Printf("Error: %s\n", err)
+		}
+		REPLACE_SITES = true
 	}
 
 	p := &Proxy{RequestTimeout: time.Duration(*requestTimeout) * time.Second}
