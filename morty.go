@@ -1041,17 +1041,12 @@ func main() {
 	cfg.Debug = *flag.Bool("debug", cfg.Debug, "Debug mode")
 	cfg.RequestTimeout = *flag.Uint("timeout", cfg.RequestTimeout, "Request timeout")
 	version := flag.Bool("version", false, "Show version")
-	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
 	socks5 := flag.String("socks5", "", "SOCKS5 proxy")
 	flag.Parse()
 
 	if *version {
 		fmt.Println(VERSION)
 		return
-	}
-
-	if *ipv6 {
-		CLIENT.DialDualStack = true
 	}
 
 	if *socks5 != "" {
