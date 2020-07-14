@@ -1,5 +1,5 @@
 # STEP 1 build executable binary
-FROM golang:1.12-alpine as builder
+FROM golang:1.14-alpine as builder
 
 WORKDIR $GOPATH/src/github.com/asciimoo/morty
 
@@ -13,7 +13,7 @@ RUN gofmt -l ./
 RUN go build .
 
 # STEP 2 build the image including only the binary
-FROM alpine:3.10
+FROM alpine:3.12
 
 EXPOSE 3000
 
