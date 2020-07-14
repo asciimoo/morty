@@ -145,24 +145,6 @@ var SAFE_ATTRIBUTES [][]byte = [][]byte{
 	[]byte("width"),
 }
 
-var SELF_CLOSING_ELEMENTS [][]byte = [][]byte{
-	[]byte("area"),
-	[]byte("base"),
-	[]byte("br"),
-	[]byte("col"),
-	[]byte("embed"),
-	[]byte("hr"),
-	[]byte("img"),
-	[]byte("input"),
-	[]byte("keygen"),
-	[]byte("link"),
-	[]byte("meta"),
-	[]byte("param"),
-	[]byte("source"),
-	[]byte("track"),
-	[]byte("wbr"),
-}
-
 var LINK_REL_SAFE_VALUES [][]byte = [][]byte{
 	[]byte("alternate"),
 	[]byte("archives"),
@@ -553,7 +535,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 				tag, hasAttrs := decoder.TagName()
 				safe := !inArray(tag, UNSAFE_ELEMENTS)
 				if !safe {
-					if !inArray(tag, SELF_CLOSING_ELEMENTS) {
+					if token != html.SelfClosingTagToken {
 						var unsafeTag []byte = make([]byte, len(tag))
 						copy(unsafeTag, tag)
 						unsafeElements = append(unsafeElements, unsafeTag)
@@ -678,7 +660,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 			}
 		} else {
 			switch token {
-			case html.StartTagToken:
+			case html.StartTagToken, html.SelfClosingTagToken:
 				tag, _ := decoder.TagName()
 				if inArray(tag, UNSAFE_ELEMENTS) {
 					unsafeElements = append(unsafeElements, tag)
