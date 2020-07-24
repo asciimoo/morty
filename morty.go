@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"mime"
@@ -21,10 +22,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpproxy"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
 
+	"github.com/asciimoo/morty/config"
 	"github.com/asciimoo/morty/contenttype"
 )
 
@@ -40,9 +43,10 @@ const MAX_REDIRECT_COUNT = 5
 
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
+	ReadBufferSize:      16 * 1024,        // 16K
 }
 
-var CSS_URL_REGEXP *regexp.Regexp = regexp.MustCompile("url\\((['\"]?)[ \\t\\f]*([\u0009\u0021\u0023-\u0026\u0028\u002a-\u007E]+)(['\"]?)\\)?")
+var cfg *config.Config = config.DefaultConfig
 
 var ALLOWED_CONTENTTYPE_FILTER contenttype.Filter = contenttype.NewFilterOr([]contenttype.Filter{
 	// html
@@ -71,7 +75,7 @@ var ALLOWED_CONTENTTYPE_FILTER contenttype.Filter = contenttype.NewFilterOr([]co
 var ALLOWED_CONTENTTYPE_ATTACHMENT_FILTER contenttype.Filter = contenttype.NewFilterOr([]contenttype.Filter{
 	// texts
 	contenttype.NewFilterEquals("text", "csv", ""),
-	contenttype.NewFilterEquals("text", "tab-separated-value", ""),
+	contenttype.NewFilterEquals("text", "tab-separated-values", ""),
 	contenttype.NewFilterEquals("text", "plain", ""),
 	// API
 	contenttype.NewFilterEquals("application", "json", ""),
@@ -143,24 +147,6 @@ var SAFE_ATTRIBUTES [][]byte = [][]byte{
 	[]byte("width"),
 }
 
-var SELF_CLOSING_ELEMENTS [][]byte = [][]byte{
-	[]byte("area"),
-	[]byte("base"),
-	[]byte("br"),
-	[]byte("col"),
-	[]byte("embed"),
-	[]byte("hr"),
-	[]byte("img"),
-	[]byte("input"),
-	[]byte("keygen"),
-	[]byte("link"),
-	[]byte("meta"),
-	[]byte("param"),
-	[]byte("source"),
-	[]byte("track"),
-	[]byte("wbr"),
-}
-
 var LINK_REL_SAFE_VALUES [][]byte = [][]byte{
 	[]byte("alternate"),
 	[]byte("archives"),
@@ -192,34 +178,32 @@ var LINK_HTTP_EQUIV_SAFE_VALUES [][]byte = [][]byte{
 	[]byte("content-language"),
 }
 
+var CSS_URL_REGEXP *regexp.Regexp = regexp.MustCompile("url\\((['\"]?)[ \\t\\f]*([\u0009\u0021\u0023-\u0026\u0028\u002a-\u007E]+)(['\"]?)\\)?")
+
 type Proxy struct {
 	Key            []byte
 	RequestTimeout time.Duration
+	FollowRedirect bool
 }
 
 type RequestConfig struct {
-	Key     []byte
-	BaseURL *url.URL
+	Key          []byte
+	BaseURL      *url.URL
+	BodyInjected bool
 }
 
-var HTML_FORM_EXTENSION string = `<input type="hidden" name="mortyurl" value="%s" /><input type="hidden" name="mortyhash" value="%s" />`
+type HTMLBodyExtParam struct {
+	BaseURL     string
+	HasMortyKey bool
+}
 
-var HTML_BODY_EXTENSION string = `
-<input type="checkbox" id="mortytoggle" autocomplete="off" />
-<div id="mortyheader">
-  <p>This is a <a href="https://github.com/asciimoo/morty">proxified and sanitized</a> view of the page,<br />visit <a href="%s" rel="noreferrer">original site</a>.</p><p><label for="mortytoggle">hide</label></p>
-</div>
-<style>
-#mortyheader { position: fixed; margin: 0; box-sizing: border-box; -webkit-box-sizing: border-box; top: 15%%; left: 0; max-width: 140px; overflow: hidden; z-index: 2147483647 !important; font-size: 12px; line-height: normal; border-width: 4px 4px 4px 0; border-style: solid; border-color: #1abc9c; background: #FFF; padding: 12px 12px 8px 8px; color: #444; }
-#mortyheader * { box-sizing: content-box; margin: 0; border: none; padding: 0; overflow: hidden; z-index: 2147483647 !important; line-height: 1em; font-size: 12px !important; font-family: sans !important; font-weight: normal; text-align: left; text-decoration: none; }
-#mortyheader p { padding: 0 0 0.7em 0; display: block; }
-#mortyheader a { color: #3498db; font-weight: bold; display: inline; }
-#mortyheader label { text-align: right; cursor: pointer; display: block; color: #444; }
-input[type=checkbox]#mortytoggle { display: none; }
-input[type=checkbox]#mortytoggle:checked ~ div { display: none; visibility: hidden; }
-</style>
-`
+type HTMLFormExtParam struct {
+	BaseURL   string
+	MortyHash string
+}
 
+var HTML_FORM_EXTENSION *template.Template
+var HTML_BODY_EXTENSION *template.Template
 var HTML_HEAD_CONTENT_TYPE string = `<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="referrer" content="no-referrer">
@@ -264,6 +248,38 @@ func init() {
 	FaviconBase64 := "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeaR9cIAAAAASUVORK5CYII"
 
 	FAVICON_BYTES, _ = base64.StdEncoding.DecodeString(FaviconBase64)
+	var err error
+	HTML_FORM_EXTENSION, err = template.New("html_form_extension").Parse(
+		`<input type="hidden" name="mortyurl" value="{{.BaseURL}}" />{{if .MortyHash}}<input type="hidden" name="mortyhash" value="{{.MortyHash}}" />{{end}}`)
+	if err != nil {
+		panic(err)
+	}
+	HTML_BODY_EXTENSION, err = template.New("html_body_extension").Parse(`
+<input type="checkbox" id="mortytoggle" autocomplete="off" />
+<div id="mortyheader">
+  <form method="get">
+    <label for="mortytoggle">hide</label>
+    <span><a href="/">Morty Proxy</a></span>
+    <input type="url" value="{{.BaseURL}}" name="mortyurl" {{if .HasMortyKey }}readonly="true"{{end}} />
+    This is a <a href="https://github.com/asciimoo/morty">proxified and sanitized</a> view of the page, visit <a href="{{.BaseURL}}" rel="noreferrer">original site</a>.
+  </form>
+</div>
+<style>
+body{ position: absolute !important; top: 42px !important; left: 0 !important; right: 0 !important; bottom: 0 !important; }
+#mortyheader { position: fixed; margin: 0; box-sizing: border-box; -webkit-box-sizing: border-box; top: 0; left: 0; right: 0; z-index: 2147483647 !important; font-size: 12px; line-height: normal; border-width: 0px 0px 2px 0; border-style: solid; border-color: #AAAAAA; background: #FFF; padding: 4px; color: #444; height: 42px; }
+#mortyheader * { padding: 0; margin: 0; }
+#mortyheader p { padding: 0 0 0.7em 0; display: block; }
+#mortyheader a { color: #3498db; font-weight: bold; display: inline; }
+#mortyheader label { text-align: right; cursor: pointer; position: fixed; right: 4px; top: 4px; display: block; color: #444; }
+#mortyheader > form > span { font-size: 24px; font-weight: bold; margin-right: 20px; margin-left: 20px; }
+input[type=checkbox]#mortytoggle { display: none; }
+input[type=checkbox]#mortytoggle:checked ~ div { display: none; visibility: hidden; }
+#mortyheader input[type=url] { width: 50%; padding: 4px; font-size: 16px; }
+</style>
+`)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
@@ -289,16 +305,35 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
+	requestURIQuery := ctx.QueryArgs().QueryString()
+	if len(requestURIQuery) > 0 {
+		if bytes.ContainsRune(requestURI, '?') {
+			requestURI = append(requestURI, '&')
+		} else {
+			requestURI = append(requestURI, '?')
+		}
+		requestURI = append(requestURI, requestURIQuery...)
+	}
+
 	p.ProcessUri(ctx, string(requestURI), 0)
 }
 
-func (p *Proxy) ProcessUri(ctx *fasthttp.RequestCtx, requestURI string, redirectCount int) {
-	parsedURI, err := url.Parse(requestURI)
+func (p *Proxy) ProcessUri(ctx *fasthttp.RequestCtx, requestURIStr string, redirectCount int) {
+	parsedURI, err := url.Parse(requestURIStr)
 
 	if err != nil {
 		// HTTP status code 500 : Internal Server Error
 		p.serveMainPage(ctx, 500, err)
 		return
+	}
+
+	if parsedURI.Scheme == "" {
+		requestURIStr = "https://" + requestURIStr
+		parsedURI, err = url.Parse(requestURIStr)
+		if err != nil {
+			p.serveMainPage(ctx, 500, err)
+			return
+		}
 	}
 
 	// Serve an intermediate page for protocols other than HTTP(S)
@@ -311,12 +346,12 @@ func (p *Proxy) ProcessUri(ctx *fasthttp.RequestCtx, requestURI string, redirect
 	defer fasthttp.ReleaseRequest(req)
 	req.SetConnectionClose()
 
-	requestURIStr := string(requestURI)
-
-	log.Println("getting", requestURIStr)
+	if cfg.Debug {
+		log.Println(string(ctx.Method()), requestURIStr)
+	}
 
 	req.SetRequestURI(requestURIStr)
-	req.Header.SetUserAgentBytes([]byte("Mozilla/5.0 (Windows NT 10.0; WOW64; rv:50.0) Gecko/20100101 Firefox/50.0"))
+	req.Header.SetUserAgentBytes([]byte("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:78.0) Gecko/20100101 Firefox/78.0"))
 
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
@@ -344,10 +379,12 @@ func (p *Proxy) ProcessUri(ctx *fasthttp.RequestCtx, requestURI string, redirect
 		case 301, 302, 303, 307, 308:
 			loc := resp.Header.Peek("Location")
 			if loc != nil {
-				log.Println("redirect to", string(loc))
-				if ctx.IsGet() {
+				if p.FollowRedirect && ctx.IsGet() {
 					// GET method: Morty follows the redirect
 					if redirectCount < MAX_REDIRECT_COUNT {
+						if cfg.Debug {
+							log.Println("follow redirect to", string(loc))
+						}
 						p.ProcessUri(ctx, string(loc), redirectCount+1)
 					} else {
 						p.serveMainPage(ctx, 310, errors.New("Too many redirects"))
@@ -360,6 +397,9 @@ func (p *Proxy) ProcessUri(ctx *fasthttp.RequestCtx, requestURI string, redirect
 					if err == nil {
 						ctx.SetStatusCode(resp.StatusCode())
 						ctx.Response.Header.Add("Location", url)
+						if cfg.Debug {
+							log.Println("redirect to", string(loc))
+						}
 						return
 					}
 				}
@@ -400,7 +440,7 @@ func (p *Proxy) ProcessUri(ctx *fasthttp.RequestCtx, requestURI string, redirect
 		} else {
 			// deny access to forbidden content type
 			// HTTP status code 403 : Forbidden
-			p.serveMainPage(ctx, 403, errors.New("forbidden content type"))
+			p.serveMainPage(ctx, 403, errors.New("forbidden content type "+parsedURI.String()))
 			return
 		}
 	}
@@ -444,7 +484,20 @@ func (p *Proxy) ProcessUri(ctx *fasthttp.RequestCtx, requestURI string, redirect
 	case contentType.SubType == "css" && contentType.Suffix == "":
 		sanitizeCSS(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
 	case contentType.SubType == "html" && contentType.Suffix == "":
-		sanitizeHTML(&RequestConfig{Key: p.Key, BaseURL: parsedURI}, ctx, responseBody)
+		rc := &RequestConfig{Key: p.Key, BaseURL: parsedURI}
+		sanitizeHTML(rc, ctx, responseBody)
+		if !rc.BodyInjected {
+			p := HTMLBodyExtParam{rc.BaseURL.String(), false}
+			if len(rc.Key) > 0 {
+				p.HasMortyKey = true
+			}
+			err := HTML_BODY_EXTENSION.Execute(ctx, p)
+			if err != nil {
+				if cfg.Debug {
+					fmt.Println("failed to inject body extension", err)
+				}
+			}
+		}
 	default:
 		if contentDispositionBytes != nil {
 			ctx.Response.Header.AddBytesV("Content-Disposition", contentDispositionBytes)
@@ -499,12 +552,9 @@ func popRequestParam(ctx *fasthttp.RequestCtx, paramName []byte) []byte {
 
 	if param == nil {
 		param = ctx.PostArgs().PeekBytes(paramName)
-		if param != nil {
-			ctx.PostArgs().DelBytes(paramName)
-		}
-	} else {
-		ctx.QueryArgs().DelBytes(paramName)
+		ctx.PostArgs().DelBytes(paramName)
 	}
+	ctx.QueryArgs().DelBytes(paramName)
 
 	return param
 }
@@ -529,7 +579,7 @@ func sanitizeCSS(rc *RequestConfig, out io.Writer, css []byte) {
 			out.Write(css[startIndex:urlStart])
 			out.Write([]byte(uri))
 			startIndex = urlEnd
-		} else {
+		} else if cfg.Debug {
 			log.Println("cannot proxify css uri:", string(css[urlStart:urlEnd]))
 		}
 	}
@@ -550,7 +600,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 		if token == html.ErrorToken {
 			err := decoder.Err()
 			if err != io.EOF {
-				log.Println("failed to parse HTML:")
+				log.Println("failed to parse HTML")
 			}
 			break
 		}
@@ -562,7 +612,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 				tag, hasAttrs := decoder.TagName()
 				safe := !inArray(tag, UNSAFE_ELEMENTS)
 				if !safe {
-					if !inArray(tag, SELF_CLOSING_ELEMENTS) {
+					if token != html.SelfClosingTagToken {
 						var unsafeTag []byte = make([]byte, len(tag))
 						copy(unsafeTag, tag)
 						unsafeElements = append(unsafeElements, unsafeTag)
@@ -648,8 +698,12 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					if rc.Key != nil {
 						key = hash(urlStr, rc.Key)
 					}
-					fmt.Fprintf(out, HTML_FORM_EXTENSION, urlStr, key)
-
+					err := HTML_FORM_EXTENSION.Execute(out, HTMLFormExtParam{urlStr, key})
+					if err != nil {
+						if cfg.Debug {
+							fmt.Println("failed to inject body extension", err)
+						}
+					}
 				}
 
 			case html.EndTagToken:
@@ -657,7 +711,17 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 				writeEndTag := true
 				switch string(tag) {
 				case "body":
-					fmt.Fprintf(out, HTML_BODY_EXTENSION, rc.BaseURL.String())
+					p := HTMLBodyExtParam{rc.BaseURL.String(), false}
+					if len(rc.Key) > 0 {
+						p.HasMortyKey = true
+					}
+					err := HTML_BODY_EXTENSION.Execute(out, p)
+					if err != nil {
+						if cfg.Debug {
+							fmt.Println("failed to inject body extension", err)
+						}
+					}
+					rc.BodyInjected = true
 				case "style":
 					state = STATE_DEFAULT
 				case "noscript":
@@ -687,7 +751,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 			}
 		} else {
 			switch token {
-			case html.StartTagToken:
+			case html.StartTagToken, html.SelfClosingTagToken:
 				tag, _ := decoder.TagName()
 				if inArray(tag, UNSAFE_ELEMENTS) {
 					unsafeElements = append(unsafeElements, tag)
@@ -792,7 +856,7 @@ func sanitizeAttr(rc *RequestConfig, out io.Writer, attrName, attrValue, escaped
 	case "src", "href", "action":
 		if uri, err := rc.ProxifyURI(attrValue); err == nil {
 			fmt.Fprintf(out, " %s=\"%s\"", attrName, uri)
-		} else {
+		} else if cfg.Debug {
 			log.Println("cannot proxify uri:", string(attrValue))
 		}
 	case "style":
@@ -942,7 +1006,9 @@ func verifyRequestURI(uri, hashMsg, key []byte) bool {
 	h := make([]byte, hex.DecodedLen(len(hashMsg)))
 	_, err := hex.Decode(h, hashMsg)
 	if err != nil {
-		log.Println("hmac error:", err)
+		if cfg.Debug {
+			log.Println("hmac error:", err)
+		}
 		return false
 	}
 	mac := hmac.New(sha256.New, key)
@@ -968,7 +1034,9 @@ func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err erro
 	ctx.SetStatusCode(statusCode)
 	ctx.Write([]byte(MORTY_HTML_PAGE_START))
 	if err != nil {
-		log.Println("error:", err)
+		if cfg.Debug {
+			log.Println("error:", err)
+		}
 		ctx.Write([]byte("<h2>Error: "))
 		ctx.Write([]byte(html.EscapeString(err.Error())))
 		ctx.Write([]byte("</h2>"))
@@ -986,16 +1054,14 @@ func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err erro
 }
 
 func main() {
-	default_listen_addr := os.Getenv("MORTY_ADDRESS")
-	if default_listen_addr == "" {
-		default_listen_addr = "127.0.0.1:3000"
-	}
-	default_key := os.Getenv("MORTY_KEY")
-	listen := flag.String("listen", default_listen_addr, "Listen address")
-	key := flag.String("key", default_key, "HMAC url validation key (base64 encoded) - leave blank to disable validation")
-	ipv6 := flag.Bool("ipv6", false, "Allow IPv6 HTTP requests")
+	cfg.ListenAddress = *flag.String("listen", cfg.ListenAddress, "Listen address")
+	cfg.Key = *flag.String("key", cfg.Key, "HMAC url validation key (base64 encoded) - leave blank to disable validation")
+	cfg.IPV6 = *flag.Bool("ipv6", cfg.IPV6, "Allow IPv6 HTTP requests")
+	cfg.Debug = *flag.Bool("debug", cfg.Debug, "Debug mode")
+	cfg.RequestTimeout = *flag.Uint("timeout", cfg.RequestTimeout, "Request timeout")
+	cfg.FollowRedirect = *flag.Bool("followredirect", cfg.FollowRedirect, "Follow HTTP GET redirect")
 	version := flag.Bool("version", false, "Show version")
-	requestTimeout := flag.Uint("timeout", 2, "Request timeout")
+	socks5 := flag.String("socks5", "", "SOCKS5 proxy")
 	flag.Parse()
 
 	if *version {
@@ -1003,24 +1069,29 @@ func main() {
 		return
 	}
 
-	if *ipv6 {
+	if *socks5 != "" {
+		// this disables CLIENT.DialDualStack
+		CLIENT.Dial = fasthttpproxy.FasthttpSocksDialer(*socks5)
+	}
+	if cfg.IPV6 {
 		CLIENT.Dial = fasthttp.DialDualStack
 	}
 
-	p := &Proxy{RequestTimeout: time.Duration(*requestTimeout) * time.Second}
+	p := &Proxy{RequestTimeout: time.Duration(cfg.RequestTimeout) * time.Second,
+		FollowRedirect: cfg.FollowRedirect}
 
-	if *key != "" {
+	if cfg.Key != "" {
 		var err error
-		p.Key, err = base64.StdEncoding.DecodeString(*key)
+		p.Key, err = base64.StdEncoding.DecodeString(cfg.Key)
 		if err != nil {
 			log.Fatal("Error parsing -key", err.Error())
 			os.Exit(1)
 		}
 	}
 
-	log.Println("listening on", *listen)
+	log.Println("listening on", cfg.ListenAddress)
 
-	if err := fasthttp.ListenAndServe(*listen, p.RequestHandler); err != nil {
+	if err := fasthttp.ListenAndServe(cfg.ListenAddress, p.RequestHandler); err != nil {
 		log.Fatal("Error in ListenAndServe:", err)
 	}
 }
