@@ -1076,7 +1076,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *proxyenv && (os.Getenv("HTTP_PROXY") != "" || os.Getenv("HTTPS_PROXY") != "") {
+	if *proxyenv {
 		CLIENT.Dial = fasthttpproxy.FasthttpProxyHTTPDialer()
 		log.Println("Using environment defined proxy(ies).")
 	} else if *proxy != "" {
