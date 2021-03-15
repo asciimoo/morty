@@ -37,7 +37,7 @@ const (
 	STATE_IN_NOSCRIPT int = 2
 )
 
-const VERSION = "v0.2.0"
+const VERSION = "v0.2.1"
 
 const MAX_REDIRECT_COUNT = 5
 
@@ -1056,12 +1056,14 @@ func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err erro
 func main() {
 	cfg.ListenAddress = *flag.String("listen", cfg.ListenAddress, "Listen address")
 	cfg.Key = *flag.String("key", cfg.Key, "HMAC url validation key (base64 encoded) - leave blank to disable validation")
-	cfg.IPV6 = *flag.Bool("ipv6", cfg.IPV6, "Allow IPv6 HTTP requests")
 	cfg.Debug = *flag.Bool("debug", cfg.Debug, "Debug mode")
 	cfg.RequestTimeout = *flag.Uint("timeout", cfg.RequestTimeout, "Request timeout")
 	cfg.FollowRedirect = *flag.Bool("followredirect", cfg.FollowRedirect, "Follow HTTP GET redirect")
+	proxyenv := flag.Bool("proxyenv", false, "Use a HTTP proxy as set in the environment (HTTP_PROXY, HTTPS_PROXY and NO_PROXY). Overrides -proxy, -socks5, -ipv6.")
+	proxy := flag.String("proxy", "", "Use the specified HTTP proxy (ie: '[user:pass@]hostname:port'). Overrides -socks5, -ipv6.")
+	socks5 := flag.String("socks5", "", "Use a SOCKS5 proxy (ie: 'hostname:port'). Overrides -ipv6.")
+	cfg.IPV6 = *flag.Bool("ipv6", cfg.IPV6, "Use IPv6 and IPv4 to send HTTP requests.")
 	version := flag.Bool("version", false, "Show version")
-	socks5 := flag.String("socks5", "", "SOCKS5 proxy")
 	flag.Parse()
 
 	if *version {
@@ -1069,12 +1071,26 @@ func main() {
 		return
 	}
 
-	if *socks5 != "" {
-		// this disables CLIENT.DialDualStack
-		CLIENT.Dial = fasthttpproxy.FasthttpSocksDialer(*socks5)
+	if *proxyenv && os.Getenv("HTTP_PROXY") == "" && os.Getenv("HTTPS_PROXY") == "" {
+		log.Fatal("Error -proxyenv is used but no environment variables named 'HTTP_PROXY' and/or 'HTTPS_PROXY' could be found.")
+		os.Exit(1)
 	}
-	if cfg.IPV6 {
+
+	if *proxyenv {
+		CLIENT.Dial = fasthttpproxy.FasthttpProxyHTTPDialer()
+		log.Println("Using environment defined proxy(ies).")
+	} else if *proxy != "" {
+		CLIENT.Dial = fasthttpproxy.FasthttpHTTPDialer(*proxy)
+		log.Println("Using custom HTTP proxy.")
+	} else if *socks5 != "" {
+		CLIENT.Dial = fasthttpproxy.FasthttpSocksDialer(*socks5)
+		log.Println("Using Socks5 proxy.")
+	} else if cfg.IPV6 {
 		CLIENT.Dial = fasthttp.DialDualStack
+		log.Println("Using dual stack (IPv4/IPv6) direct connections.")
+	} else {
+		CLIENT.Dial = fasthttp.Dial
+		log.Println("Using IPv4 only direct connections.")
 	}
 
 	p := &Proxy{RequestTimeout: time.Duration(cfg.RequestTimeout) * time.Second,
