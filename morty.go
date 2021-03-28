@@ -1054,17 +1054,24 @@ func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err erro
 }
 
 func main() {
-	cfg.ListenAddress = *flag.String("listen", cfg.ListenAddress, "Listen address")
-	cfg.Key = *flag.String("key", cfg.Key, "HMAC url validation key (base64 encoded) - leave blank to disable validation")
-	cfg.Debug = *flag.Bool("debug", cfg.Debug, "Debug mode")
-	cfg.RequestTimeout = *flag.Uint("timeout", cfg.RequestTimeout, "Request timeout")
-	cfg.FollowRedirect = *flag.Bool("followredirect", cfg.FollowRedirect, "Follow HTTP GET redirect")
+	listenAddress := flag.String("listen", cfg.ListenAddress, "Listen address")
+	key := flag.String("key", cfg.Key, "HMAC url validation key (base64 encoded) - leave blank to disable validation")
+	IPV6 := flag.Bool("ipv6", cfg.IPV6, "Allow IPv6 HTTP requests")
+	debug := flag.Bool("debug", cfg.Debug, "Debug mode")
+	requestTimeout := flag.Uint("timeout", cfg.RequestTimeout, "Request timeout")
+	followRedirect := flag.Bool("followredirect", cfg.FollowRedirect, "Follow HTTP GET redirect")
 	proxyenv := flag.Bool("proxyenv", false, "Use a HTTP proxy as set in the environment (HTTP_PROXY, HTTPS_PROXY and NO_PROXY). Overrides -proxy, -socks5, -ipv6.")
 	proxy := flag.String("proxy", "", "Use the specified HTTP proxy (ie: '[user:pass@]hostname:port'). Overrides -socks5, -ipv6.")
 	socks5 := flag.String("socks5", "", "Use a SOCKS5 proxy (ie: 'hostname:port'). Overrides -ipv6.")
-	cfg.IPV6 = *flag.Bool("ipv6", cfg.IPV6, "Use IPv6 and IPv4 to send HTTP requests.")
 	version := flag.Bool("version", false, "Show version")
 	flag.Parse()
+
+	cfg.ListenAddress = *listenAddress
+	cfg.Key = *key
+	cfg.IPV6 = *IPV6
+	cfg.Debug = *debug
+	cfg.RequestTimeout = *requestTimeout
+	cfg.FollowRedirect = *followRedirect
 
 	if *version {
 		fmt.Println(VERSION)
