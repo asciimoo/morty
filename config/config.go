@@ -25,8 +25,8 @@ func init() {
 		Debug:          os.Getenv("DEBUG") != "false",
 		ListenAddress:  default_listen_addr,
 		Key:            default_key,
-		IPV6:           true,
-		RequestTimeout: 5,
-		FollowRedirect: false,
+		IPV6:           false,
+		RequestTimeout: 600,
+		FollowRedirect: true,
 	}
 }

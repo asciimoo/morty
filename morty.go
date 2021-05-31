@@ -44,6 +44,7 @@ const MAX_REDIRECT_COUNT = 5
 var CLIENT *fasthttp.Client = &fasthttp.Client{
 	MaxResponseBodySize: 10 * 1024 * 1024, // 10M
 	ReadBufferSize:      16 * 1024,        // 16K
+	MaxConnsPerHost:     4,		       // This will limit each host to 4 connections
 }
 
 var cfg *config.Config = config.DefaultConfig
@@ -1100,7 +1101,7 @@ func main() {
 		log.Println("Using IPv4 only direct connections.")
 	}
 
-	p := &Proxy{RequestTimeout: time.Duration(cfg.RequestTimeout) * time.Second,
+	p := &Proxy{RequestTimeout: time.Duration(cfg.RequestTimeout) * time.Minute,
 		FollowRedirect: cfg.FollowRedirect}
 
 	if cfg.Key != "" {
