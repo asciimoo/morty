@@ -10,6 +10,7 @@ type Config struct {
 	Key            string
 	IPV6           bool
 	RequestTimeout uint
+	FollowRedirect bool
 }
 
 var DefaultConfig *Config
@@ -26,5 +27,6 @@ func init() {
 		Key:            default_key,
 		IPV6:           true,
 		RequestTimeout: 5,
+		FollowRedirect: false,
 	}
 }

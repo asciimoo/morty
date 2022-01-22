@@ -30,9 +30,34 @@ $ go get github.com/asciimoo/morty
 $ "$GOPATH/bin/morty" --help
 ```
 
+### Usage
+
+```
+  -debug
+        Debug mode (default true)
+  -followredirect
+        Follow HTTP GET redirect
+  -ipv6
+        Allow IPv6 HTTP requests (default true)
+  -key string
+        HMAC url validation key (base64 encoded) - leave blank to disable validation
+  -listen string
+        Listen address (default "127.0.0.1:3000")
+  -proxy string
+        Use the specified HTTP proxy (ie: '[user:pass@]hostname:port'). Overrides -socks5, -ipv6.
+  -proxyenv
+        Use a HTTP proxy as set in the environment (HTTP_PROXY, HTTPS_PROXY and NO_PROXY). Overrides -proxy, -socks5, -ipv6.
+  -socks5 string
+        Use a SOCKS5 proxy (ie: 'hostname:port'). Overrides -ipv6.
+  -timeout uint
+        Request timeout (default 5)
+  -version
+        Show version
+```
+
 ### Environment variables
 
-Morty can be configured using the following environment variables:
+Morty can additionally be configured using the following environment variables:
 - `MORTY_ADDRESS`: Listen address (default to `127.0.0.1:3000`)
 - `MORTY_KEY`: HMAC url validation key (base64 encoded) to prevent direct URL opening. Leave blank to disable validation. Use `openssl rand -base64 33` to generate.
 - `DEBUG`: Enable/disable proxy and redirection logs (default to `true`). Set to `false` to disable.
@@ -40,11 +65,11 @@ Morty can be configured using the following environment variables:
 ### Docker
 
 ```
-docker run -e DEBUG=false -e MORTY_ADDRESS=0.0.0.0:3000 -v ./rules.json:/etc/filtron/rules.json:rw dalf/morty
+docker run -e DEBUG=false -e MORTY_ADDRESS=0.0.0.0:3000 dalf/morty
 ```
 
 ```
-docker run -e DEBUG=false -v ./rules.json:/etc/filtron/rules.json:rw dalf/morty -listen 0.0.0.0:3000
+docker run -e DEBUG=false dalf/morty -listen 0.0.0.0:3000
 ```
 
 
