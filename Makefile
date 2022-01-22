@@ -1,4 +1,4 @@
-APP_NAME=morty
+APP_NAME=dalf/morty
 
 build:
 	docker rmi -f $(APP_NAME):latest
