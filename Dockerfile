@@ -1,7 +1,7 @@
 # STEP 1: get ca-certificates and an user
 FROM alpine as alpine
 RUN apk --no-cache add ca-certificates \
-    && adduser -D -h /usr/local/morty -s /bin/false morty morty
+    && adduser -D -h /usr/local/morty -s /bin/false -u 10001 morty morty
 
 # STEP 2: build executable binary
 FROM golang:1.17-alpine as builder
