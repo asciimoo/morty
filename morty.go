@@ -351,7 +351,7 @@ func (p *Proxy) ProcessUri(ctx *fasthttp.RequestCtx, requestURIStr string, redir
 	}
 
 	req.SetRequestURI(requestURIStr)
-	req.Header.SetUserAgentBytes([]byte("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:96.0) Gecko/20100101 Firefox/96.0"))
+	req.Header.SetUserAgentBytes([]byte("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0"))
 
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
