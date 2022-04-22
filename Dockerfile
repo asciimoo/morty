@@ -4,7 +4,7 @@ RUN apk --no-cache add ca-certificates \
     && adduser -D -h /usr/local/morty -s /bin/false -u 10001 morty morty
 
 # STEP 2: build executable binary
-FROM golang:1.17-alpine as builder
+FROM golang:1.18-alpine as builder
 
 WORKDIR $GOPATH/src/github.com/asciimoo/morty
 
