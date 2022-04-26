@@ -193,17 +193,25 @@ type RequestConfig struct {
 }
 
 type HTMLBodyExtParam struct {
-	BaseURL     string
-	HasMortyKey bool
+	BaseURL      string
+	HasMortyKey  bool
+	URLParamName string
 }
 
 type HTMLFormExtParam struct {
-	BaseURL   string
-	MortyHash string
+	BaseURL       string
+	MortyHash     string
+	URLParamName  string
+	HashParamName string
+}
+
+type HTMLMainPageFormParam struct {
+	URLParamName string
 }
 
 var HTML_FORM_EXTENSION *template.Template
 var HTML_BODY_EXTENSION *template.Template
+var HTML_MAIN_PAGE_FORM *template.Template
 var HTML_HEAD_CONTENT_TYPE string = `<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="referrer" content="no-referrer">
@@ -250,7 +258,7 @@ func init() {
 	FAVICON_BYTES, _ = base64.StdEncoding.DecodeString(FaviconBase64)
 	var err error
 	HTML_FORM_EXTENSION, err = template.New("html_form_extension").Parse(
-		`<input type="hidden" name="mortyurl" value="{{.BaseURL}}" />{{if .MortyHash}}<input type="hidden" name="mortyhash" value="{{.MortyHash}}" />{{end}}`)
+		`<input type="hidden" name="{{.URLParamName}}" value="{{.BaseURL}}" />{{if .MortyHash}}<input type="hidden" name="{{.HashParamName}}" value="{{.MortyHash}}" />{{end}}`)
 	if err != nil {
 		panic(err)
 	}
@@ -260,7 +268,7 @@ func init() {
   <form method="get">
     <label for="mortytoggle">hide</label>
     <span><a href="/">Morty Proxy</a></span>
-    <input type="url" value="{{.BaseURL}}" name="mortyurl" {{if .HasMortyKey }}readonly="true"{{end}} />
+    <input type="url" value="{{.BaseURL}}" name="{{.URLParamName}}" {{if .HasMortyKey }}readonly="true"{{end}} />
     This is a <a href="https://github.com/asciimoo/morty">proxified and sanitized</a> view of the page, visit <a href="{{.BaseURL}}" rel="noreferrer">original site</a>.
   </form>
 </div>
@@ -280,6 +288,15 @@ input[type=checkbox]#mortytoggle:checked ~ div { display: none; visibility: hidd
 	if err != nil {
 		panic(err)
 	}
+
+	HTML_MAIN_PAGE_FORM, err = template.New("html_main_page_form").Parse(`
+	<form action="post">
+	Visit url: <input placeholder="https://url.." name="{{.URLParamName}}" autofocus />
+	<input type="submit" value="go" />
+	</form>`)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
@@ -288,9 +305,9 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	requestHash := popRequestParam(ctx, []byte("mortyhash"))
+	requestHash := popRequestParam(ctx, []byte(cfg.HashParameter))
 
-	requestURI := popRequestParam(ctx, []byte("mortyurl"))
+	requestURI := popRequestParam(ctx, []byte(cfg.UrlParameter))
 
 	if requestURI == nil {
 		p.serveMainPage(ctx, 200, nil)
@@ -300,7 +317,8 @@ func (p *Proxy) RequestHandler(ctx *fasthttp.RequestCtx) {
 	if p.Key != nil {
 		if !verifyRequestURI(requestURI, requestHash, p.Key) {
 			// HTTP status code 403 : Forbidden
-			p.serveMainPage(ctx, 403, errors.New(`invalid "mortyhash" parameter`))
+			error_message := fmt.Sprintf(`invalid "%s" parameter. hint: Hash URL Parameter`, cfg.HashParameter)
+			p.serveMainPage(ctx, 403, errors.New(error_message))
 			return
 		}
 	}
@@ -487,7 +505,7 @@ func (p *Proxy) ProcessUri(ctx *fasthttp.RequestCtx, requestURIStr string, redir
 		rc := &RequestConfig{Key: p.Key, BaseURL: parsedURI}
 		sanitizeHTML(rc, ctx, responseBody)
 		if !rc.BodyInjected {
-			p := HTMLBodyExtParam{rc.BaseURL.String(), false}
+			p := HTMLBodyExtParam{rc.BaseURL.String(), false, cfg.UrlParameter}
 			if len(rc.Key) > 0 {
 				p.HasMortyKey = true
 			}
@@ -698,7 +716,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 					if rc.Key != nil {
 						key = hash(urlStr, rc.Key)
 					}
-					err := HTML_FORM_EXTENSION.Execute(out, HTMLFormExtParam{urlStr, key})
+					err := HTML_FORM_EXTENSION.Execute(out, HTMLFormExtParam{urlStr, key, cfg.UrlParameter, cfg.HashParameter})
 					if err != nil {
 						if cfg.Debug {
 							fmt.Println("failed to inject body extension", err)
@@ -711,7 +729,7 @@ func sanitizeHTML(rc *RequestConfig, out io.Writer, htmlDoc []byte) {
 				writeEndTag := true
 				switch string(tag) {
 				case "body":
-					p := HTMLBodyExtParam{rc.BaseURL.String(), false}
+					p := HTMLBodyExtParam{rc.BaseURL.String(), false, cfg.UrlParameter}
 					if len(rc.Key) > 0 {
 						p.HasMortyKey = true
 					}
@@ -982,9 +1000,9 @@ func (rc *RequestConfig) ProxifyURI(uri []byte) (string, error) {
 	morty_uri := u.String()
 
 	if rc.Key == nil {
-		return fmt.Sprintf("./?mortyurl=%s%s", url.QueryEscape(morty_uri), fragment), nil
+		return fmt.Sprintf("./?%s=%s%s", cfg.UrlParameter, url.QueryEscape(morty_uri), fragment), nil
 	}
-	return fmt.Sprintf("./?mortyhash=%s&mortyurl=%s%s", hash(morty_uri, rc.Key), url.QueryEscape(morty_uri), fragment), nil
+	return fmt.Sprintf("./?%s=%s&%s=%s%s", cfg.HashParameter, hash(morty_uri, rc.Key), cfg.UrlParameter, url.QueryEscape(morty_uri), fragment), nil
 }
 
 func inArray(b []byte, a [][]byte) bool {
@@ -1042,11 +1060,13 @@ func (p *Proxy) serveMainPage(ctx *fasthttp.RequestCtx, statusCode int, err erro
 		ctx.Write([]byte("</h2>"))
 	}
 	if p.Key == nil {
-		ctx.Write([]byte(`
-		<form action="post">
-		Visit url: <input placeholder="https://url.." name="mortyurl" autofocus />
-		<input type="submit" value="go" />
-		</form>`))
+		p := HTMLMainPageFormParam{cfg.UrlParameter}
+		err := HTML_MAIN_PAGE_FORM.Execute(ctx, p)
+		if err != nil {
+			if cfg.Debug {
+				fmt.Println("failed to inject main page form", err)
+			}
+		}
 	} else {
 		ctx.Write([]byte(`<h3>Warning! This instance does not support direct URL opening.</h3>`))
 	}
@@ -1063,6 +1083,8 @@ func main() {
 	proxyenv := flag.Bool("proxyenv", false, "Use a HTTP proxy as set in the environment (HTTP_PROXY, HTTPS_PROXY and NO_PROXY). Overrides -proxy, -socks5, -ipv6.")
 	proxy := flag.String("proxy", "", "Use the specified HTTP proxy (ie: '[user:pass@]hostname:port'). Overrides -socks5, -ipv6.")
 	socks5 := flag.String("socks5", "", "Use a SOCKS5 proxy (ie: 'hostname:port'). Overrides -ipv6.")
+	urlParameter := flag.String("urlparam", cfg.UrlParameter, "user-defined requesting string URL parameter name (ie: '/?url=...' or '/?u=...')")
+	hashParameter := flag.String("hashparam", cfg.HashParameter, "user-defined requesting string HASH parameter name (ie: '/?hash=...' or '/?h=...')")
 	version := flag.Bool("version", false, "Show version")
 	flag.Parse()
 
@@ -1072,6 +1094,8 @@ func main() {
 	cfg.Debug = *debug
 	cfg.RequestTimeout = *requestTimeout
 	cfg.FollowRedirect = *followRedirect
+	cfg.UrlParameter = *urlParameter
+	cfg.HashParameter = *hashParameter
 
 	if *version {
 		fmt.Println(VERSION)
