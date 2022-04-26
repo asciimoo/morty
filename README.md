@@ -37,6 +37,8 @@ $ "$GOPATH/bin/morty" --help
         Debug mode (default true)
   -followredirect
         Follow HTTP GET redirect
+  -hashparam string
+    	  User-defined requesting string HASH parameter name (ie: '/?hash=...' or '/?h=...') (default "mortyhash")
   -ipv6
         Allow IPv6 HTTP requests (default true)
   -key string
@@ -51,6 +53,8 @@ $ "$GOPATH/bin/morty" --help
         Use a SOCKS5 proxy (ie: 'hostname:port'). Overrides -ipv6.
   -timeout uint
         Request timeout (default 5)
+  -urlparam string
+    	  User-defined requesting string URL parameter name (ie: '/?url=...' or '/?u=...') (default "mortyurl")
   -version
         Show version
 ```
@@ -60,6 +64,8 @@ $ "$GOPATH/bin/morty" --help
 Morty can additionally be configured using the following environment variables:
 - `MORTY_ADDRESS`: Listen address (default to `127.0.0.1:3000`)
 - `MORTY_KEY`: HMAC url validation key (base64 encoded) to prevent direct URL opening. Leave blank to disable validation. Use `openssl rand -base64 33` to generate.
+- `MORTY_URL_PARAM`: User-defined requesting string URL parameter name (ie: `/?url=...` or `/?u=...`) (default `mortyurl`)
+- `MORTY_HASH_PARAM`: User-defined requesting string HASH parameter name (ie: `/?hash=...` or `/?h=...`) (default `mortyhash`)
 - `DEBUG`: Enable/disable proxy and redirection logs (default to `true`). Set to `false` to disable.
 
 ### Docker
