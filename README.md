@@ -26,7 +26,7 @@ Features:
 Requirement: Go version 1.10 or higher.
 
 ```
-$ go get github.com/asciimoo/morty
+$ go install github.com/asciimoo/morty@latest
 $ "$GOPATH/bin/morty" --help
 ```
 
