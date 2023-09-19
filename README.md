@@ -8,7 +8,7 @@ Web content sanitizer proxy as a service
 
 Morty rewrites web pages to exclude malicious HTML tags and attributes. It also replaces external resource references to prevent third party information leaks.
 
-The main goal of morty is to provide a result proxy for [searx](https://asciimoo.github.com/searx/), but it can be used as a standalone sanitizer service too.
+The main goal of morty is to provide a result proxy for [searx](https://asciimoo.github.io/searx/), but it can be used as a standalone sanitizer service too.
 
 Features:
 
@@ -26,7 +26,7 @@ Features:
 Requirement: Go version 1.10 or higher.
 
 ```
-$ go get github.com/asciimoo/morty
+$ go install github.com/asciimoo/morty@latest
 $ "$GOPATH/bin/morty" --help
 ```
 
